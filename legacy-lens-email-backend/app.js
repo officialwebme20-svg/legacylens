@@ -1,10 +1,3 @@
-import {
-    generateRegistrationOptions,
-    verifyRegistrationResponse,
-    generateAuthenticationOptions,
-    verifyAuthenticationResponse
-} from "@simplewebauthn/server";
-
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -19,11 +12,6 @@ const app = express();
 const PORT =
     process.env.PORT || 3000;
 
-
-/* =========================================================
-   ENVIRONMENT VARIABLES
-========================================================= */
-
 const BREVO_API_KEY =
     process.env.BREVO_API_KEY;
 
@@ -34,63 +22,31 @@ const EMAIL_FROM_NAME =
     process.env.EMAIL_FROM_NAME ||
     "Legacy Lens AI";
 
-
-/*
- * IMPORTANT:
- *
- * RP_ID must match the domain where your frontend is running.
- *
- * Example:
- *
- * Frontend:
- * https://legacylens.com
- *
- * RP_ID:
- * legacylens.com
- *
- * Do NOT include https://
- */
-
-const RP_NAME =
-    "Legacy Lens AI";
-
-const RP_ID =
-    process.env.WEBAUTHN_RP_ID ||
-    "legacylens-lon6.onrender.com";
-
-
-/*
- * This must be the EXACT frontend origin.
- *
- * Example:
- *
- * https://legacylens.com
- *
- * NOT:
- *
- * https://legacylens.com/
- */
-
-const ORIGIN =
+const FRONTEND_URL =
     process.env.FRONTEND_URL ||
-    "https://legacylens-lon6.onrender.com";
+    "http://localhost:5500";
 
 
 /* =========================================================
-   EXPRESS CONFIGURATION
+   EXPRESS SECURITY
 ========================================================= */
 
 app.use(
-    helmet()
+    helmet({
+        crossOriginResourcePolicy: {
+            policy: "cross-origin"
+        }
+    })
 );
 
 
 app.use(
     cors({
-        origin: process.env.FRONTEND_URL || true,
+        origin: FRONTEND_URL,
         methods: [
             "GET",
-            "POST"
+            "POST",
+            "DELETE"
         ],
         allowedHeaders: [
             "Content-Type"
@@ -101,7 +57,7 @@ app.use(
 
 app.use(
     express.json({
-        limit: "10kb"
+        limit: "100kb"
     })
 );
 
@@ -115,36 +71,63 @@ const otpRequests =
 
 
 /* =========================================================
-   PASSKEY / BIOMETRIC STORAGE
+   FACE STORAGE
 ========================================================= */
 
 /*
- * Structure:
- *
- * email -> {
- *     currentChallenge: "...",
- *
- *     credentials: [
- *         {
- *             id,
- *             publicKey,
- *             counter,
- *             transports
- *         }
- *     ]
- * }
- */
+    IMPORTANT:
 
-const passkeyUsers =
+    This is temporary in-memory storage.
+
+    Production:
+    store the encrypted face descriptor
+    in a real database.
+*/
+
+const faceUsers =
     new Map();
 
 
+/*
+    Example:
+
+    faceUsers.set(email, {
+        descriptor: [...],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    });
+*/
+
+
 /* =========================================================
-   RATE LIMITING
+   FACE MATCH THRESHOLD
+========================================================= */
+
+/*
+    face-api.js descriptors use Euclidean distance.
+
+    Lower distance = more similar.
+
+    0.45 is intentionally fairly strict.
+
+    You may need to tune this after testing
+    different cameras and lighting conditions.
+*/
+
+const FACE_MATCH_THRESHOLD =
+    Number(
+        process.env.FACE_MATCH_THRESHOLD ||
+        0.45
+    );
+
+
+/* =========================================================
+   RATE LIMITERS
 ========================================================= */
 
 const sendCodeLimiter =
     rateLimit({
+
         windowMs:
             15 * 60 * 1000,
 
@@ -156,7 +139,6 @@ const sendCodeLimiter =
 
         message: {
             success: false,
-
             message:
                 "Too many verification requests. Please try again later."
         }
@@ -165,6 +147,7 @@ const sendCodeLimiter =
 
 const verifyCodeLimiter =
     rateLimit({
+
         windowMs:
             15 * 60 * 1000,
 
@@ -176,55 +159,61 @@ const verifyCodeLimiter =
 
         message: {
             success: false,
-
             message:
                 "Too many verification attempts. Please try again later."
         }
     });
 
 
+const faceRegisterLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max: 5,
+
+        standardHeaders: true,
+
+        legacyHeaders: false,
+
+        message: {
+            success: false,
+            message:
+                "Too many face registration attempts. Please try again later."
+        }
+    });
+
+
+const faceLoginLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max: 15,
+
+        standardHeaders: true,
+
+        legacyHeaders: false,
+
+        message: {
+            success: false,
+            message:
+                "Too many face login attempts. Please try again later."
+        }
+    });
+
+
 /* =========================================================
-   BIOMETRIC RATE LIMITING
+   EMAIL VALIDATION
 ========================================================= */
 
-const passkeyRegistrationLimiter =
-    rateLimit({
-        windowMs:
-            15 * 60 * 1000,
+function isValidEmail(email) {
 
-        max: 10,
-
-        standardHeaders: true,
-
-        legacyHeaders: false,
-
-        message: {
-            success: false,
-
-            message:
-                "Too many biometric setup requests. Please try again later."
-        }
-    });
-
-
-const passkeyAuthenticationLimiter =
-    rateLimit({
-        windowMs:
-            15 * 60 * 1000,
-
-        max: 20,
-
-        standardHeaders: true,
-
-        legacyHeaders: false,
-
-        message: {
-            success: false,
-
-            message:
-                "Too many biometric login attempts. Please try again later."
-        }
-    });
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        .test(email);
+}
 
 
 /* =========================================================
@@ -239,7 +228,6 @@ function generateOTP() {
             1000000
         )
         .toString();
-
 }
 
 
@@ -253,12 +241,11 @@ function hashOTP(code) {
         .createHash("sha256")
         .update(code)
         .digest("hex");
-
 }
 
 
 /* =========================================================
-   CLEAN EXPIRED OTPs
+   CLEAN OTP
 ========================================================= */
 
 function cleanupExpiredCodes() {
@@ -275,18 +262,14 @@ function cleanupExpiredCodes() {
     ) {
 
         if (
-            data.expiresAt <=
-            now
+            data.expiresAt <= now
         ) {
 
             otpRequests.delete(
                 email
             );
-
         }
-
     }
-
 }
 
 
@@ -297,59 +280,80 @@ setInterval(
 
 
 /* =========================================================
-   CLEAN EXPIRED PASSKEY CHALLENGES
+   FACE VALIDATION
 ========================================================= */
 
-function cleanupPasskeyChallenges() {
+function validateDescriptor(
+    descriptor
+) {
 
-    /*
-     * Challenges are short-lived.
-     *
-     * We simply remove registration/
-     * authentication challenges after
-     * 5 minutes.
-     */
-
-    const now =
-        Date.now();
-
-    for (
-        const [
-            email,
-            user
-        ]
-        of passkeyUsers.entries()
+    if (
+        !Array.isArray(
+            descriptor
+        )
     ) {
 
-        if (
-            user.challengeCreatedAt &&
-            now -
-                user.challengeCreatedAt >
-                5 * 60 * 1000
-        ) {
-
-            user.currentChallenge =
-                null;
-
-            user.challengeCreatedAt =
-                null;
-
-            passkeyUsers.set(
-                email,
-                user
-            );
-
-        }
-
+        return false;
     }
 
+
+    if (
+        descriptor.length !== 128
+    ) {
+
+        return false;
+    }
+
+
+    return descriptor.every(
+        value =>
+            typeof value === "number" &&
+            Number.isFinite(value)
+    );
 }
 
 
-setInterval(
-    cleanupPasskeyChallenges,
-    60 * 1000
-);
+/* =========================================================
+   EUCLIDEAN DISTANCE
+========================================================= */
+
+function euclideanDistance(
+    descriptorA,
+    descriptorB
+) {
+
+    if (
+        descriptorA.length !==
+        descriptorB.length
+    ) {
+
+        throw new Error(
+            "Face descriptors have different lengths."
+        );
+    }
+
+
+    let sum = 0;
+
+
+    for (
+        let i = 0;
+        i < descriptorA.length;
+        i++
+    ) {
+
+        const difference =
+            descriptorA[i] -
+            descriptorB[i];
+
+        sum +=
+            difference *
+            difference;
+    }
+
+
+    return Math.sqrt(sum);
+}
 
 
 /* =========================================================
@@ -365,19 +369,20 @@ app.get(
             success: true,
 
             service:
-                "Legacy Lens AI Email Verification + WebAuthn",
+                "Legacy Lens AI",
 
             status:
-                "online"
+                "online",
 
+            faceRecognition:
+                true
         });
-
     }
 );
 
 
 /* =========================================================
-   SEND EMAIL THROUGH BREVO
+   SEND BREVO EMAIL
 ========================================================= */
 
 async function sendBrevoEmail({
@@ -392,7 +397,6 @@ async function sendBrevoEmail({
         throw new Error(
             "BREVO_API_KEY is not configured."
         );
-
     }
 
 
@@ -401,7 +405,6 @@ async function sendBrevoEmail({
         throw new Error(
             "EMAIL_FROM is not configured."
         );
-
     }
 
 
@@ -410,8 +413,7 @@ async function sendBrevoEmail({
             "https://api.brevo.com/v3/smtp/email",
             {
 
-                method:
-                    "POST",
+                method: "POST",
 
                 headers: {
 
@@ -423,7 +425,6 @@ async function sendBrevoEmail({
 
                     "content-type":
                         "application/json"
-
                 },
 
                 body:
@@ -436,16 +437,13 @@ async function sendBrevoEmail({
 
                             email:
                                 EMAIL_FROM
-
                         },
 
                         to: [
-
                             {
                                 email:
                                     recipient
                             }
-
                         ],
 
                         subject,
@@ -453,9 +451,7 @@ async function sendBrevoEmail({
                         htmlContent,
 
                         textContent
-
                     })
-
             }
         );
 
@@ -476,12 +472,10 @@ async function sendBrevoEmail({
             data.message ||
             "Brevo could not send the email."
         );
-
     }
 
 
     return data;
-
 }
 
 
@@ -496,53 +490,47 @@ app.post(
 
         let email = "";
 
+
         try {
 
             email =
                 String(
-                    req.body.email || ""
+                    req.body.email ||
+                    ""
                 )
-                    .trim()
-                    .toLowerCase();
+                .trim()
+                .toLowerCase();
 
 
             if (!email) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Email address is required."
-
                     });
-
             }
 
 
-            const emailPattern =
-                /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-
             if (
-                !emailPattern.test(
+                !isValidEmail(
                     email
                 )
             ) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Please provide a valid email address."
-
                     });
-
             }
 
 
@@ -560,17 +548,15 @@ app.post(
                     60 * 1000
             ) {
 
-                return res.status(429)
+                return res
+                    .status(429)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Please wait before requesting another code."
-
                     });
-
             }
 
 
@@ -597,18 +583,15 @@ app.post(
 
                     expiresAt,
 
-                    attempts:
-                        0,
+                    attempts: 0,
 
                     lastSentAt:
                         Date.now()
-
                 }
             );
 
 
             const htmlContent = `
-
 <!DOCTYPE html>
 
 <html>
@@ -627,7 +610,6 @@ Legacy Lens AI Verification
 </title>
 
 </head>
-
 
 <body
 style="
@@ -655,11 +637,7 @@ box-shadow:0 8px 30px rgba(0,0,0,0.08);
 "
 >
 
-<div
-style="
-text-align:center;
-"
->
+<div style="text-align:center;">
 
 <h1
 style="
@@ -671,10 +649,8 @@ font-size:28px;
 Legacy Lens AI
 </h1>
 
-
 <p
 style="
-margin-top:10px;
 color:#64748b;
 font-size:16px;
 "
@@ -697,7 +673,6 @@ text-align:center;
 
 <p
 style="
-margin:0 0 18px;
 color:#475569;
 font-size:15px;
 "
@@ -740,11 +715,8 @@ line-height:1.6;
 text-align:center;
 "
 >
-
-If you did not request this
-verification code, you can
-safely ignore this email.
-
+If you did not request this verification
+code, you can safely ignore this email.
 </p>
 
 
@@ -756,10 +728,8 @@ font-size:13px;
 text-align:center;
 "
 >
-
 © ${new Date().getFullYear()}
 Legacy Lens AI
-
 </p>
 
 </div>
@@ -769,12 +739,10 @@ Legacy Lens AI
 </body>
 
 </html>
-
 `;
 
 
             const textContent = `
-
 Legacy Lens AI
 
 Verify your email address.
@@ -789,7 +757,6 @@ If you did not request this verification code,
 you can safely ignore this email.
 
 © ${new Date().getFullYear()} Legacy Lens AI
-
 `;
 
 
@@ -804,7 +771,6 @@ you can safely ignore this email.
                 htmlContent,
 
                 textContent
-
             });
 
 
@@ -815,12 +781,10 @@ you can safely ignore this email.
 
             return res.json({
 
-                success:
-                    true,
+                success: true,
 
                 message:
                     "Verification code sent."
-
             });
 
 
@@ -837,30 +801,26 @@ you can safely ignore this email.
                 otpRequests.delete(
                     email
                 );
-
             }
 
 
-            return res.status(500)
+            return res
+                .status(500)
                 .json({
 
-                    success:
-                        false,
+                    success: false,
 
                     message:
                         error.message ||
                         "Unable to send verification email."
-
                 });
-
         }
-
     }
 );
 
 
 /* =========================================================
-   VERIFY OTP
+   VERIFY EMAIL CODE
 ========================================================= */
 
 app.post(
@@ -872,17 +832,19 @@ app.post(
 
             const email =
                 String(
-                    req.body.email || ""
+                    req.body.email ||
+                    ""
                 )
-                    .trim()
-                    .toLowerCase();
+                .trim()
+                .toLowerCase();
 
 
             const code =
                 String(
-                    req.body.code || ""
+                    req.body.code ||
+                    ""
                 )
-                    .trim();
+                .trim();
 
 
             if (
@@ -890,17 +852,15 @@ app.post(
                 !code
             ) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Email and verification code are required."
-
                     });
-
             }
 
 
@@ -910,17 +870,15 @@ app.post(
                 )
             ) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Verification code must contain 6 digits."
-
                     });
-
             }
 
 
@@ -932,17 +890,15 @@ app.post(
 
             if (!stored) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "This verification code is invalid or has expired."
-
                     });
-
             }
 
 
@@ -956,17 +912,15 @@ app.post(
                 );
 
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "This verification code has expired."
-
                     });
-
             }
 
 
@@ -979,17 +933,15 @@ app.post(
                 );
 
 
-                return res.status(429)
+                return res
+                    .status(429)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Too many incorrect attempts. Request a new code."
-
                     });
-
             }
 
 
@@ -1027,17 +979,15 @@ app.post(
                 stored.attempts += 1;
 
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Incorrect verification code."
-
                     });
-
             }
 
 
@@ -1053,15 +1003,12 @@ app.post(
 
             return res.json({
 
-                success:
-                    true,
+                success: true,
 
-                verified:
-                    true,
+                verified: true,
 
                 message:
                     "Email verified successfully."
-
             });
 
 
@@ -1073,834 +1020,487 @@ app.post(
             );
 
 
-            return res.status(500)
+            return res
+                .status(500)
                 .json({
 
-                    success:
-                        false,
+                    success: false,
 
                     message:
                         "Something went wrong."
-
                 });
-
         }
-
     }
 );
 
 
 /* =========================================================
-   PASSKEY REGISTRATION OPTIONS
+   FACE REGISTRATION
 ========================================================= */
 
 app.post(
-    "/api/passkey/register/options",
-    passkeyRegistrationLimiter,
+    "/api/face/register",
+    faceRegisterLimiter,
     async (req, res) => {
 
         try {
 
             const email =
                 String(
-                    req.body.email || ""
+                    req.body.email ||
+                    ""
                 )
-                    .trim()
-                    .toLowerCase();
+                .trim()
+                .toLowerCase();
+
+
+            const descriptor =
+                req.body.descriptor;
 
 
             if (!email) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Email is required."
-
                     });
-
             }
 
 
-            let existing =
-                passkeyUsers.get(
+            if (
+                !isValidEmail(
                     email
-                );
-
-
-            if (!existing) {
-
-                existing = {
-
-                    credentials: [],
-
-                    currentChallenge:
-                        null,
-
-                    challengeCreatedAt:
-                        null
-
-                };
-
-            }
-
-
-            const options =
-                await generateRegistrationOptions({
-
-                    rpName:
-                        RP_NAME,
-
-                    rpID:
-                        RP_ID,
-
-                    userName:
-                        email,
-
-                    userDisplayName:
-                        email,
-
-                    attestationType:
-                        "none",
-
-                    excludeCredentials:
-                        (
-                            existing.credentials ||
-                            []
-                        ).map(
-                            credential => ({
-
-                                id:
-                                    credential.id,
-
-                                transports:
-                                    credential.transports
-
-                            })
-                        ),
-
-                    authenticatorSelection: {
-
-                        residentKey:
-                            "preferred",
-
-                        userVerification:
-                            "required"
-
-                    },
-
-                    supportedAlgorithmIDs: [
-                        -7,
-                        -257
-                    ]
-
-                });
-
-
-            existing.currentChallenge =
-                options.challenge;
-
-
-            existing.challengeCreatedAt =
-                Date.now();
-
-
-            passkeyUsers.set(
-                email,
-                existing
-            );
-
-
-            return res.json({
-
-                success:
-                    true,
-
-                options
-
-            });
-
-
-        } catch (error) {
-
-            console.error(
-                "Passkey registration options error:",
-                error
-            );
-
-
-            return res.status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    message:
-                        "Unable to start biometric setup."
-
-                });
-
-        }
-
-    }
-);
-
-
-/* =========================================================
-   PASSKEY REGISTRATION VERIFICATION
-========================================================= */
-
-app.post(
-    "/api/passkey/register/verify",
-    passkeyRegistrationLimiter,
-    async (req, res) => {
-
-        try {
-
-            const {
-                email,
-                response
-            } = req.body;
-
-
-            const normalizedEmail =
-                String(
-                    email || ""
                 )
-                    .trim()
-                    .toLowerCase();
+            ) {
 
-
-            if (!normalizedEmail) {
-
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
-                            "Email is required."
-
+                            "Invalid email address."
                     });
-
             }
-
-
-            if (!response) {
-
-                return res.status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        message:
-                            "Credential response is required."
-
-                    });
-
-            }
-
-
-            const user =
-                passkeyUsers.get(
-                    normalizedEmail
-                );
 
 
             if (
-                !user ||
-                !user.currentChallenge
+                !validateDescriptor(
+                    descriptor
+                )
             ) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
-                            "Registration session expired. Please try again."
-
+                            "Invalid facial biometric data."
                     });
-
-            }
-
-
-            const verification =
-                await verifyRegistrationResponse({
-
-                    response,
-
-                    expectedChallenge:
-                        user.currentChallenge,
-
-                    expectedOrigin:
-                        ORIGIN,
-
-                    expectedRPID:
-                        RP_ID,
-
-                    requireUserVerification:
-                        true
-
-                });
-
-
-            if (
-                !verification.verified
-            ) {
-
-                return res.status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        message:
-                            "Biometric registration failed."
-
-                    });
-
-            }
-
-
-            const registrationInfo =
-                verification.registrationInfo;
-
-
-            if (
-                !registrationInfo ||
-                !registrationInfo.credential
-            ) {
-
-                return res.status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        message:
-                            "No biometric credential was returned."
-
-                    });
-
-            }
-
-
-            const credential = {
-
-                id:
-                    registrationInfo
-                        .credential
-                        .id,
-
-                publicKey:
-                    Buffer.from(
-                        registrationInfo
-                            .credential
-                            .publicKey
-                    )
-                        .toString(
-                            "base64url"
-                        ),
-
-                counter:
-                    registrationInfo
-                        .credential
-                        .counter,
-
-                transports:
-                    response
-                        .response
-                        ?.transports ||
-                    []
-
-            };
-
-
-            if (!user.credentials) {
-
-                user.credentials =
-                    [];
-
             }
 
 
             /*
-             * Prevent duplicate credentials.
-             */
+                Store the descriptor.
 
-            const alreadyExists =
-                user.credentials.some(
-                    existingCredential =>
-                        existingCredential.id ===
-                        credential.id
-                );
+                Do not store the camera image.
+            */
+
+            const now =
+                Date.now();
 
 
-            if (!alreadyExists) {
+            faceUsers.set(
+                email,
+                {
 
-                user.credentials.push(
-                    credential
-                );
+                    descriptor:
+                        descriptor.map(
+                            Number
+                        ),
 
-            }
+                    createdAt:
+                        faceUsers.get(email)
+                            ?.createdAt ||
+                        now,
 
-
-            user.currentChallenge =
-                null;
-
-
-            user.challengeCreatedAt =
-                null;
-
-
-            passkeyUsers.set(
-                normalizedEmail,
-                user
+                    updatedAt:
+                        now
+                }
             );
 
 
             console.log(
-                `Passkey registered for ${normalizedEmail}`
+                `Face biometric registered for ${email}`
             );
 
 
             return res.json({
 
-                success:
-                    true,
+                success: true,
+
+                registered: true,
 
                 message:
-                    "Biometric login enabled successfully."
-
+                    "Face recognition enabled successfully."
             });
 
 
         } catch (error) {
 
             console.error(
-                "Passkey registration verification error:",
+                "Face registration error:",
                 error
             );
 
 
-            return res.status(500)
+            return res
+                .status(500)
                 .json({
 
-                    success:
-                        false,
+                    success: false,
 
                     message:
-                        "Unable to complete biometric setup."
-
+                        "Unable to register facial recognition."
                 });
-
         }
-
     }
 );
 
 
 /* =========================================================
-   PASSKEY LOGIN OPTIONS
+   CHECK FACE REGISTRATION
 ========================================================= */
 
 app.post(
-    "/api/passkey/login/options",
-    passkeyAuthenticationLimiter,
+    "/api/face/status",
     async (req, res) => {
 
         try {
 
             const email =
                 String(
-                    req.body.email || ""
+                    req.body.email ||
+                    ""
                 )
-                    .trim()
-                    .toLowerCase();
+                .trim()
+                .toLowerCase();
 
 
             if (!email) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Email is required."
-
                     });
-
             }
 
 
-            const user =
-                passkeyUsers.get(
+            const registered =
+                faceUsers.has(
                     email
                 );
 
 
-            if (
-                !user ||
-                !user.credentials ||
-                user.credentials.length === 0
-            ) {
-
-                return res.status(404)
-                    .json({
-
-                        success:
-                            false,
-
-                        message:
-                            "No biometric login is registered for this account."
-
-                    });
-
-            }
-
-
-            const options =
-                await generateAuthenticationOptions({
-
-                    rpID:
-                        RP_ID,
-
-                    userVerification:
-                        "required",
-
-                    allowCredentials:
-                        user.credentials.map(
-                            credential => ({
-
-                                id:
-                                    credential.id,
-
-                                transports:
-                                    credential.transports
-
-                            })
-                        )
-
-                });
-
-
-            user.currentChallenge =
-                options.challenge;
-
-
-            user.challengeCreatedAt =
-                Date.now();
-
-
-            passkeyUsers.set(
-                email,
-                user
-            );
-
-
             return res.json({
 
-                success:
-                    true,
+                success: true,
 
-                options
-
+                registered
             });
 
 
         } catch (error) {
 
             console.error(
-                "Passkey login options error:",
+                "Face status error:",
                 error
             );
 
 
-            return res.status(500)
+            return res
+                .status(500)
                 .json({
 
-                    success:
-                        false,
+                    success: false,
 
                     message:
-                        "Unable to start biometric login."
-
+                        "Unable to check face registration."
                 });
-
         }
-
     }
 );
 
 
 /* =========================================================
-   PASSKEY LOGIN VERIFICATION
+   FACE LOGIN
 ========================================================= */
 
 app.post(
-    "/api/passkey/login/verify",
-    passkeyAuthenticationLimiter,
+    "/api/face/login",
+    faceLoginLimiter,
     async (req, res) => {
 
         try {
 
-            const {
-                email,
-                response
-            } = req.body;
-
-
-            const normalizedEmail =
+            const email =
                 String(
-                    email || ""
+                    req.body.email ||
+                    ""
                 )
-                    .trim()
-                    .toLowerCase();
+                .trim()
+                .toLowerCase();
 
 
-            if (!normalizedEmail) {
+            const descriptor =
+                req.body.descriptor;
 
-                return res.status(400)
+
+            if (!email) {
+
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
                             "Email is required."
-
                     });
-
             }
-
-
-            if (!response) {
-
-                return res.status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        message:
-                            "Credential response is required."
-
-                    });
-
-            }
-
-
-            const user =
-                passkeyUsers.get(
-                    normalizedEmail
-                );
 
 
             if (
-                !user ||
-                !user.currentChallenge
+                !validateDescriptor(
+                    descriptor
+                )
             ) {
 
-                return res.status(400)
+                return res
+                    .status(400)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
 
                         message:
-                            "Authentication session expired. Please try again."
-
+                            "Invalid facial biometric data."
                     });
-
             }
 
 
-            const credentialID =
-                response.id;
-
-
-            const authenticator =
-                user.credentials.find(
-                    credential =>
-                        credential.id ===
-                        credentialID
+            const stored =
+                faceUsers.get(
+                    email
                 );
 
 
-            if (!authenticator) {
+            if (!stored) {
 
-                return res.status(400)
+                return res
+                    .status(404)
                     .json({
 
-                        success:
-                            false,
+                        success: false,
+
+                        authenticated: false,
 
                         message:
-                            "Biometric credential not recognized."
-
+                            "No face recognition profile exists for this account."
                     });
-
             }
 
 
-            const verification =
-                await verifyAuthenticationResponse({
-
-                    response,
-
-                    expectedChallenge:
-                        user.currentChallenge,
-
-                    expectedOrigin:
-                        ORIGIN,
-
-                    expectedRPID:
-                        RP_ID,
-
-                    credential: {
-
-                        id:
-                            authenticator.id,
-
-                        publicKey:
-                            Uint8Array.from(
-                                Buffer.from(
-                                    authenticator.publicKey,
-                                    "base64url"
-                                )
-                            ),
-
-                        counter:
-                            authenticator.counter,
-
-                        transports:
-                            authenticator.transports
-
-                    },
-
-                    requireUserVerification:
-                        true
-
-                });
+            const distance =
+                euclideanDistance(
+                    descriptor,
+                    stored.descriptor
+                );
 
 
-            if (
-                !verification.verified
-            ) {
-
-                return res.status(401)
-                    .json({
-
-                        success:
-                            false,
-
-                        message:
-                            "Biometric authentication failed."
-
-                    });
-
-            }
-
-
-            authenticator.counter =
-                verification.authenticationInfo
-                    .newCounter;
-
-
-            user.currentChallenge =
-                null;
-
-
-            user.challengeCreatedAt =
-                null;
-
-
-            passkeyUsers.set(
-                normalizedEmail,
-                user
-            );
+            const matched =
+                distance <=
+                FACE_MATCH_THRESHOLD;
 
 
             console.log(
-                `Biometric login successful for ${normalizedEmail}`
+                `Face login attempt: ${email} | distance=${distance.toFixed(4)} | matched=${matched}`
             );
+
+
+            if (!matched) {
+
+                return res
+                    .status(401)
+                    .json({
+
+                        success: false,
+
+                        authenticated: false,
+
+                        message:
+                            "Face not recognized."
+                    });
+            }
+
+
+            /*
+                IMPORTANT:
+
+                This response is only proof of
+                successful face comparison.
+
+                Your real application should now
+                issue a secure server-side session
+                or signed authentication token.
+            */
 
 
             return res.json({
 
-                success:
-                    true,
+                success: true,
 
-                authenticated:
-                    true,
+                authenticated: true,
 
-                email:
-                    normalizedEmail,
+                email,
 
                 message:
-                    "Biometric authentication successful."
-
+                    "Face recognized successfully."
             });
 
 
         } catch (error) {
 
             console.error(
-                "Passkey authentication verification error:",
+                "Face login error:",
                 error
             );
 
 
-            return res.status(401)
+            return res
+                .status(500)
                 .json({
 
-                    success:
-                        false,
+                    success: false,
+
+                    authenticated: false,
 
                     message:
-                        "Biometric authentication failed."
-
+                        "Unable to process face authentication."
                 });
-
         }
-
     }
 );
 
 
 /* =========================================================
-   404 HANDLER
+   DELETE FACE BIOMETRIC
+========================================================= */
+
+app.delete(
+    "/api/face/delete",
+    async (req, res) => {
+
+        try {
+
+            const email =
+                String(
+                    req.body.email ||
+                    ""
+                )
+                .trim()
+                .toLowerCase();
+
+
+            if (!email) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Email is required."
+                    });
+            }
+
+
+            const deleted =
+                faceUsers.delete(
+                    email
+                );
+
+
+            return res.json({
+
+                success: true,
+
+                deleted,
+
+                message:
+                    deleted
+                        ? "Face biometric removed."
+                        : "No face biometric was found."
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "Face deletion error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success: false,
+
+                    message:
+                        "Unable to remove face biometric."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   404
 ========================================================= */
 
 app.use(
     (req, res) => {
 
-        res.status(404)
+        res
+            .status(404)
             .json({
 
-                success:
-                    false,
+                success: false,
 
                 message:
                     "Endpoint not found."
-
             });
-
     }
 );
 
 
 /* =========================================================
-   GLOBAL ERROR HANDLER
+   ERROR HANDLER
 ========================================================= */
 
 app.use(
@@ -1912,26 +1512,15 @@ app.use(
         );
 
 
-        if (res.headersSent) {
-
-            return next(
-                error
-            );
-
-        }
-
-
-        res.status(500)
+        res
+            .status(500)
             .json({
 
-                success:
-                    false,
+                success: false,
 
                 message:
                     "Internal server error."
-
             });
-
     }
 );
 
@@ -1949,12 +1538,7 @@ app.listen(
         );
 
         console.log(
-            `WebAuthn RP ID: ${RP_ID}`
+            `Face matching threshold: ${FACE_MATCH_THRESHOLD}`
         );
-
-        console.log(
-            `WebAuthn Origin: ${ORIGIN}`
-        );
-
     }
 );
