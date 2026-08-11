@@ -4,28 +4,11 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import crypto from "crypto";
-import { Resend } from "resend";
-import * as faceapi from "@vladmandic/face-api";
-import canvas from "canvas";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 dotenv.config();
-
-const {
-    Canvas,
-    Image,
-    ImageData
-} = canvas;
-
-faceapi.env.monkeyPatch({
-    Canvas,
-    Image,
-    ImageData
-});
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -34,32 +17,123 @@ const PORT = process.env.PORT || 3000;
 const FRONTEND_URL =
     process.env.FRONTEND_URL || "*";
 
-const EMAIL_FROM =
-    process.env.EMAIL_FROM;
-
-const EMAIL_FROM_NAME =
-    process.env.EMAIL_FROM_NAME ||
-    "Legacy Lens AI";
-
-const RESEND_API_KEY =
-    process.env.RESEND_API_KEY;
-
-const resend =
-    RESEND_API_KEY
-        ? new Resend(RESEND_API_KEY)
-        : null;
-
-
 /*
 |--------------------------------------------------------------------------
-| APP CONFIGURATION
+| FILE PATHS
 |--------------------------------------------------------------------------
 */
 
-app.set(
-    "trust proxy",
-    1
-);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const DATA_DIR =
+    path.join(__dirname, "data");
+
+const FACE_FILE =
+    path.join(DATA_DIR, "face-users.json");
+
+/*
+|--------------------------------------------------------------------------
+| CREATE DATA DIRECTORY
+|--------------------------------------------------------------------------
+*/
+
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, {
+        recursive: true
+    });
+}
+
+/*
+|--------------------------------------------------------------------------
+| LOAD STORED FACE USERS
+|--------------------------------------------------------------------------
+*/
+
+let faceUsers = new Map();
+
+function loadFaceUsers() {
+    try {
+        if (!fs.existsSync(FACE_FILE)) {
+            fs.writeFileSync(
+                FACE_FILE,
+                JSON.stringify({}, null, 2)
+            );
+
+            return;
+        }
+
+        const raw =
+            fs.readFileSync(
+                FACE_FILE,
+                "utf8"
+            );
+
+        const data =
+            JSON.parse(raw);
+
+        faceUsers =
+            new Map(
+                Object.entries(data)
+            );
+
+        console.log(
+            `Loaded ${faceUsers.size} registered face user(s).`
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Unable to load face database:",
+            error
+        );
+
+        faceUsers = new Map();
+    }
+}
+
+loadFaceUsers();
+
+/*
+|--------------------------------------------------------------------------
+| SAVE FACE USERS
+|--------------------------------------------------------------------------
+*/
+
+function saveFaceUsers() {
+
+    try {
+
+        const data =
+            Object.fromEntries(
+                faceUsers
+            );
+
+        fs.writeFileSync(
+            FACE_FILE,
+            JSON.stringify(
+                data,
+                null,
+                2
+            )
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Unable to save face database:",
+            error
+        );
+
+        throw error;
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| SECURITY
+|--------------------------------------------------------------------------
+*/
 
 app.use(
     helmet({
@@ -67,56 +141,207 @@ app.use(
     })
 );
 
+/*
+|--------------------------------------------------------------------------
+| CORS
+|--------------------------------------------------------------------------
+*/
+
 app.use(
     cors({
-        origin: FRONTEND_URL,
+        origin:
+            FRONTEND_URL === "*"
+                ? true
+                : FRONTEND_URL,
+
         methods: [
             "GET",
             "POST",
             "OPTIONS"
         ],
+
         allowedHeaders: [
-            "Content-Type",
-            "Authorization"
+            "Content-Type"
         ]
     })
 );
 
+/*
+|--------------------------------------------------------------------------
+| JSON
+|--------------------------------------------------------------------------
+*/
+
 app.use(
     express.json({
-        limit: "15mb"
+        limit: "250kb"
     })
 );
 
-
 /*
 |--------------------------------------------------------------------------
-| FACE STORAGE
-|--------------------------------------------------------------------------
-|
-| email -> {
-|     descriptor: [...]
-| }
-|
-| IMPORTANT:
-| This is temporary memory storage.
-| Data disappears when Render restarts.
-|
-*/
-
-const faceUsers =
-    new Map();
-
-
-/*
-|--------------------------------------------------------------------------
-| OTP STORAGE
+| HEALTH
 |--------------------------------------------------------------------------
 */
 
-const otpRequests =
-    new Map();
+app.get(
+    "/api/health",
+    (req, res) => {
 
+        return res.json({
+            success: true,
+            service: "Legacy Lens AI",
+            status: "online"
+        });
+
+    }
+);
+
+/*
+|--------------------------------------------------------------------------
+| NORMALIZE EMAIL
+|--------------------------------------------------------------------------
+*/
+
+function normalizeEmail(email) {
+
+    return String(email || "")
+        .trim()
+        .toLowerCase();
+}
+
+/*
+|--------------------------------------------------------------------------
+| VALIDATE EMAIL
+|--------------------------------------------------------------------------
+*/
+
+function validEmail(email) {
+
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        .test(email);
+}
+
+/*
+|--------------------------------------------------------------------------
+| VALIDATE DESCRIPTOR
+|--------------------------------------------------------------------------
+*/
+
+function validateDescriptor(
+    descriptor
+) {
+
+    if (
+        !Array.isArray(
+            descriptor
+        )
+    ) {
+        return false;
+    }
+
+    if (
+        descriptor.length !== 128
+    ) {
+        return false;
+    }
+
+    return descriptor.every(
+        value =>
+            typeof value === "number" &&
+            Number.isFinite(value)
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| FACE DISTANCE
+|--------------------------------------------------------------------------
+*/
+
+function faceDistance(
+    a,
+    b
+) {
+
+    if (
+        !validateDescriptor(a) ||
+        !validateDescriptor(b)
+    ) {
+        return Infinity;
+    }
+
+    let sum = 0;
+
+    for (
+        let i = 0;
+        i < a.length;
+        i++
+    ) {
+
+        const difference =
+            a[i] - b[i];
+
+        sum +=
+            difference *
+            difference;
+    }
+
+    return Math.sqrt(sum);
+}
+
+/*
+|--------------------------------------------------------------------------
+| AVERAGE DESCRIPTORS
+|--------------------------------------------------------------------------
+*/
+
+function averageDescriptors(
+    descriptors
+) {
+
+    if (
+        !Array.isArray(descriptors) ||
+        descriptors.length === 0
+    ) {
+        return null;
+    }
+
+    const length =
+        descriptors[0].length;
+
+    const average =
+        new Array(length)
+            .fill(0);
+
+    for (
+        const descriptor
+        of descriptors
+    ) {
+
+        for (
+            let i = 0;
+            i < length;
+            i++
+        ) {
+
+            average[i] +=
+                descriptor[i];
+        }
+    }
+
+    for (
+        let i = 0;
+        i < length;
+        i++
+    ) {
+
+        average[i] /=
+            descriptors.length;
+    }
+
+    return average;
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -124,27 +349,9 @@ const otpRequests =
 |--------------------------------------------------------------------------
 */
 
-const sendCodeLimiter =
+const faceRegisterLimiter =
     rateLimit({
-        windowMs:
-            15 * 60 * 1000,
 
-        max: 5,
-
-        standardHeaders: true,
-
-        legacyHeaders: false,
-
-        message: {
-            success: false,
-            message:
-                "Too many verification requests. Please try again later."
-        }
-    });
-
-
-const verifyCodeLimiter =
-    rateLimit({
         windowMs:
             15 * 60 * 1000,
 
@@ -157,13 +364,14 @@ const verifyCodeLimiter =
         message: {
             success: false,
             message:
-                "Too many verification attempts. Please try again later."
+                "Too many face registration attempts. Please try again later."
         }
+
     });
 
-
-const faceLimiter =
+const faceLoginLimiter =
     rateLimit({
+
         windowMs:
             15 * 60 * 1000,
 
@@ -176,348 +384,20 @@ const faceLimiter =
         message: {
             success: false,
             message:
-                "Too many face authentication attempts. Please try again later."
+                "Too many face login attempts. Please try again later."
         }
+
     });
 
-
 /*
 |--------------------------------------------------------------------------
-| LOAD FACE MODELS
-|--------------------------------------------------------------------------
-*/
-
-let faceModelsLoaded =
-    false;
-
-
-async function loadFaceModels() {
-
-    if (faceModelsLoaded) {
-        return;
-    }
-
-    const modelPath =
-        path.join(
-            __dirname,
-            "models"
-        );
-
-    console.log(
-        "Loading face recognition models..."
-    );
-
-    await faceapi.nets.ssdMobilenetv1.loadFromDisk(
-        modelPath
-    );
-
-    await faceapi.nets.faceLandmark68Net.loadFromDisk(
-        modelPath
-    );
-
-    await faceapi.nets.faceRecognitionNet.loadFromDisk(
-        modelPath
-    );
-
-    faceModelsLoaded =
-        true;
-
-    console.log(
-        "Face recognition models loaded."
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| NORMALIZE EMAIL
-|--------------------------------------------------------------------------
-*/
-
-function normalizeEmail(
-    email
-) {
-
-    return String(
-        email || ""
-    )
-        .trim()
-        .toLowerCase();
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| GENERATE OTP
-|--------------------------------------------------------------------------
-*/
-
-function generateOTP() {
-
-    return crypto
-        .randomInt(
-            100000,
-            1000000
-        )
-        .toString();
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| HASH OTP
-|--------------------------------------------------------------------------
-*/
-
-function hashOTP(
-    code
-) {
-
-    return crypto
-        .createHash("sha256")
-        .update(code)
-        .digest("hex");
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| FACE IMAGE DATA
-|--------------------------------------------------------------------------
-*/
-
-function base64ToBuffer(
-    image
-) {
-
-    if (
-        typeof image !==
-        "string"
-    ) {
-
-        throw new Error(
-            "Invalid image."
-        );
-    }
-
-    const match =
-        image.match(
-            /^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/
-        );
-
-    if (!match) {
-
-        throw new Error(
-            "Invalid image format."
-        );
-    }
-
-    return Buffer.from(
-        match[1],
-        "base64"
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| CREATE FACE DESCRIPTOR
-|--------------------------------------------------------------------------
-*/
-
-async function createFaceDescriptor(
-    image
-) {
-
-    await loadFaceModels();
-
-    const buffer =
-        base64ToBuffer(
-            image
-        );
-
-    const img =
-        await canvas.loadImage(
-            buffer
-        );
-
-    const detection =
-        await faceapi
-            .detectSingleFace(
-                img
-            )
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-
-    if (!detection) {
-
-        throw new Error(
-            "No face detected. Please position your face clearly inside the camera."
-        );
-    }
-
-    if (
-        detection.detection.score <
-        0.65
-    ) {
-
-        throw new Error(
-            "Face detection was not clear enough. Please move closer and try again."
-        );
-    }
-
-    return Array.from(
-        detection.descriptor
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| COMPARE FACES
-|--------------------------------------------------------------------------
-*/
-
-function compareFaces(
-    storedDescriptor,
-    liveDescriptor
-) {
-
-    if (
-        !Array.isArray(
-            storedDescriptor
-        ) ||
-        !Array.isArray(
-            liveDescriptor
-        )
-    ) {
-
-        return Infinity;
-    }
-
-    if (
-        storedDescriptor.length !==
-        liveDescriptor.length
-    ) {
-
-        return Infinity;
-    }
-
-    let sum = 0;
-
-    for (
-        let i = 0;
-        i < storedDescriptor.length;
-        i++
-    ) {
-
-        const difference =
-            storedDescriptor[i] -
-            liveDescriptor[i];
-
-        sum +=
-            difference *
-            difference;
-    }
-
-    return Math.sqrt(
-        sum
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| HEALTH CHECK
-|--------------------------------------------------------------------------
-*/
-
-app.get(
-    "/api/health",
-    async (req, res) => {
-
-        res.json({
-            success: true,
-            service:
-                "Legacy Lens AI",
-            status:
-                "online",
-            faceRecognition:
-                faceModelsLoaded
-                    ? "ready"
-                    : "loading"
-        });
-    }
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| FACE STATUS
-|--------------------------------------------------------------------------
-*/
-
-app.post(
-    "/api/face/status",
-    faceLimiter,
-    async (req, res) => {
-
-        try {
-
-            const email =
-                normalizeEmail(
-                    req.body.email
-                );
-
-            if (!email) {
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Email is required."
-                });
-            }
-
-            const registered =
-                faceUsers.has(
-                    email
-                );
-
-            return res.json({
-                success: true,
-                registered
-            });
-
-        } catch (error) {
-
-            console.error(
-                "Face status error:",
-                error
-            );
-
-            return res.status(
-                500
-            ).json({
-                success: false,
-                message:
-                    "Unable to check Face ID status."
-            });
-        }
-    }
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| REGISTER FACE
+| FACE REGISTRATION
 |--------------------------------------------------------------------------
 */
 
 app.post(
     "/api/face/register",
-    faceLimiter,
+    faceRegisterLimiter,
     async (req, res) => {
 
         try {
@@ -527,67 +407,191 @@ app.post(
                     req.body.email
                 );
 
-            const image =
-                req.body.image;
+            const descriptors =
+                req.body.descriptors;
+
+            /*
+            |--------------------------------------------------------------------------
+            | EMAIL
+            |--------------------------------------------------------------------------
+            */
 
             if (!email) {
 
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Email is required."
-                });
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Email address is required."
+
+                    });
             }
 
-            if (!image) {
+            if (!validEmail(email)) {
 
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Face image is required."
-                });
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Please provide a valid email address."
+
+                    });
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | DESCRIPTORS
+            |--------------------------------------------------------------------------
+            */
 
-            console.log(
-                `Face registration started for ${email}`
-            );
+            if (
+                !Array.isArray(
+                    descriptors
+                )
+            ) {
 
+                return res.status(400)
+                    .json({
 
-            const descriptor =
-                await createFaceDescriptor(
-                    image
+                        success: false,
+
+                        message:
+                            "Face data is required."
+
+                    });
+            }
+
+            if (
+                descriptors.length < 3 ||
+                descriptors.length > 10
+            ) {
+
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Please provide between 3 and 10 face captures."
+
+                    });
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | VALIDATE EACH CAPTURE
+            |--------------------------------------------------------------------------
+            */
+
+            for (
+                const descriptor
+                of descriptors
+            ) {
+
+                if (
+                    !validateDescriptor(
+                        descriptor
+                    )
+                ) {
+
+                    return res.status(400)
+                        .json({
+
+                            success: false,
+
+                            message:
+                                "Invalid face data received."
+
+                        });
+                }
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | CREATE TEMPLATE
+            |--------------------------------------------------------------------------
+            */
+
+            const faceTemplate =
+                averageDescriptors(
+                    descriptors
                 );
 
+            if (
+                !validateDescriptor(
+                    faceTemplate
+                )
+            ) {
+
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Unable to create face template."
+
+                    });
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | STORE USER
+            |--------------------------------------------------------------------------
+            */
+
+            const existing =
+                faceUsers.get(
+                    email
+                );
+
+            const user = {
+
+                email,
+
+                faceTemplate,
+
+                registeredAt:
+                    existing?.registeredAt ||
+                    new Date()
+                        .toISOString(),
+
+                updatedAt:
+                    new Date()
+                        .toISOString()
+
+            };
 
             faceUsers.set(
                 email,
-                {
-                    descriptor,
-
-                    createdAt:
-                        new Date().toISOString()
-                }
+                user
             );
 
+            /*
+            |--------------------------------------------------------------------------
+            | SAVE
+            |--------------------------------------------------------------------------
+            */
+
+            saveFaceUsers();
 
             console.log(
                 `Face registered for ${email}`
             );
 
-
             return res.json({
+
                 success: true,
 
-                registered:
-                    true,
+                registered: true,
 
                 message:
-                    "Face ID registered successfully."
+                    "Face registered successfully."
+
             });
 
         } catch (error) {
@@ -597,18 +601,95 @@ app.post(
                 error
             );
 
-            return res.status(
-                400
-            ).json({
-                success: false,
-                message:
-                    error.message ||
-                    "Unable to register your face."
-            });
+            return res.status(500)
+                .json({
+
+                    success: false,
+
+                    message:
+                        "Unable to register your face."
+
+                });
         }
     }
 );
 
+/*
+|--------------------------------------------------------------------------
+| FACE STATUS
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+    "/api/face/status",
+    async (req, res) => {
+
+        try {
+
+            const email =
+                normalizeEmail(
+                    req.body.email
+                );
+
+            if (!email) {
+
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Email address is required."
+
+                    });
+            }
+
+            if (!validEmail(email)) {
+
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Please provide a valid email address."
+
+                    });
+            }
+
+            const user =
+                faceUsers.get(
+                    email
+                );
+
+            return res.json({
+
+                success: true,
+
+                registered:
+                    Boolean(user)
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Face status error:",
+                error
+            );
+
+            return res.status(500)
+                .json({
+
+                    success: false,
+
+                    message:
+                        "Unable to check face status."
+
+                });
+        }
+    }
+);
 
 /*
 |--------------------------------------------------------------------------
@@ -618,7 +699,7 @@ app.post(
 
 app.post(
     "/api/face/login",
-    faceLimiter,
+    faceLoginLimiter,
     async (req, res) => {
 
         try {
@@ -628,106 +709,161 @@ app.post(
                     req.body.email
                 );
 
-            const image =
-                req.body.image;
+            const descriptor =
+                req.body.descriptor;
 
+            /*
+            |--------------------------------------------------------------------------
+            | EMAIL
+            |--------------------------------------------------------------------------
+            */
 
             if (!email) {
 
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Email is required."
-                });
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        authenticated: false,
+
+                        message:
+                            "Email address is required."
+
+                    });
             }
 
+            if (!validEmail(email)) {
 
-            if (!image) {
+                return res.status(400)
+                    .json({
 
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Face image is required."
-                });
+                        success: false,
+
+                        authenticated: false,
+
+                        message:
+                            "Please provide a valid email address."
+
+                    });
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | DESCRIPTOR
+            |--------------------------------------------------------------------------
+            */
 
-            const storedUser =
+            if (
+                !validateDescriptor(
+                    descriptor
+                )
+            ) {
+
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        authenticated: false,
+
+                        message:
+                            "Invalid face data."
+
+                    });
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | FIND USER
+            |--------------------------------------------------------------------------
+            */
+
+            const user =
                 faceUsers.get(
                     email
                 );
 
+            if (!user) {
 
-            if (!storedUser) {
+                return res.status(404)
+                    .json({
 
-                return res.status(
-                    404
-                ).json({
-                    success: false,
-                    registered:
-                        false,
-                    message:
-                        "Face ID has not been registered for this account."
-                });
+                        success: false,
+
+                        authenticated: false,
+
+                        registered: false,
+
+                        message:
+                            "No face is registered for this account."
+
+                    });
             }
-
-
-            const liveDescriptor =
-                await createFaceDescriptor(
-                    image
-                );
-
-
-            const distance =
-                compareFaces(
-                    storedUser.descriptor,
-                    liveDescriptor
-                );
-
 
             /*
             |--------------------------------------------------------------------------
-            | FACE MATCH THRESHOLD
+            | COMPARE
+            |--------------------------------------------------------------------------
+            */
+
+            const distance =
+                faceDistance(
+                    descriptor,
+                    user.faceTemplate
+                );
+
+            /*
+            |--------------------------------------------------------------------------
+            | MATCH THRESHOLD
             |--------------------------------------------------------------------------
             |
-            | Lower = stricter.
-            |
-            | 0.45 = strict
-            | 0.50 = balanced
-            | 0.60 = more tolerant
+            | 0.45 = relatively strict.
             |
             */
 
             const MATCH_THRESHOLD =
-                0.50;
+                0.45;
 
+            const matched =
+                distance <=
+                MATCH_THRESHOLD;
 
             console.log(
-                `Face match for ${email}:`,
-                distance
+                `Face comparison for ${email}: ${distance.toFixed(4)}`
             );
 
+            /*
+            |--------------------------------------------------------------------------
+            | NOT MATCHED
+            |--------------------------------------------------------------------------
+            */
 
-            if (
-                distance >
-                MATCH_THRESHOLD
-            ) {
+            if (!matched) {
 
-                return res.status(
-                    401
-                ).json({
-                    success: false,
-                    authenticated:
-                        false,
-                    message:
-                        "Face not recognized. Please try again."
-                });
+                return res.status(401)
+                    .json({
+
+                        success: false,
+
+                        authenticated: false,
+
+                        message:
+                            "Face not recognized. Please try again."
+
+                    });
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | CREATE SESSION TOKEN
+            |--------------------------------------------------------------------------
+            */
+
+            const sessionToken =
+                crypto
+                    .randomBytes(32)
+                    .toString("hex");
 
             /*
             |--------------------------------------------------------------------------
@@ -735,32 +871,24 @@ app.post(
             |--------------------------------------------------------------------------
             */
 
-            const loginToken =
-                crypto.randomBytes(
-                    32
-                ).toString(
-                    "hex"
-                );
-
-
             console.log(
                 `Face login successful for ${email}`
             );
 
-
             return res.json({
+
                 success: true,
 
-                authenticated:
-                    true,
+                authenticated: true,
 
                 email,
 
                 token:
-                    loginToken,
+                    sessionToken,
 
                 message:
                     "Face recognized successfully."
+
             });
 
         } catch (error) {
@@ -770,30 +898,29 @@ app.post(
                 error
             );
 
-            return res.status(
-                400
-            ).json({
-                success: false,
-                authenticated:
-                    false,
-                message:
-                    error.message ||
-                    "Unable to verify your face."
-            });
+            return res.status(500)
+                .json({
+
+                    success: false,
+
+                    authenticated: false,
+
+                    message:
+                        "Unable to complete face login."
+
+                });
         }
     }
 );
 
-
 /*
 |--------------------------------------------------------------------------
-| DELETE FACE
+| REMOVE FACE
 |--------------------------------------------------------------------------
 */
 
 app.post(
     "/api/face/remove",
-    faceLimiter,
     async (req, res) => {
 
         try {
@@ -805,31 +932,38 @@ app.post(
 
             if (!email) {
 
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Email is required."
-                });
+                return res.status(400)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Email address is required."
+
+                    });
             }
 
-
-            const removed =
+            const existed =
                 faceUsers.delete(
                     email
                 );
 
+            if (existed) {
+                saveFaceUsers();
+            }
 
             return res.json({
+
                 success: true,
 
-                removed,
+                removed:
+                    existed,
 
                 message:
-                    removed
-                        ? "Face ID removed successfully."
-                        : "No Face ID was registered."
+                    existed
+                        ? "Face data removed successfully."
+                        : "No registered face was found."
+
             });
 
         } catch (error) {
@@ -839,505 +973,18 @@ app.post(
                 error
             );
 
-            return res.status(
-                500
-            ).json({
-                success: false,
-                message:
-                    "Unable to remove Face ID."
-            });
+            return res.status(500)
+                .json({
+
+                    success: false,
+
+                    message:
+                        "Unable to remove face data."
+
+                });
         }
     }
 );
-
-
-/*
-|--------------------------------------------------------------------------
-| SEND VERIFICATION CODE
-|--------------------------------------------------------------------------
-*/
-
-app.post(
-    "/api/send-code",
-    sendCodeLimiter,
-    async (req, res) => {
-
-        const email =
-            normalizeEmail(
-                req.body.email
-            );
-
-
-        try {
-
-            if (!email) {
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Email address is required."
-                });
-            }
-
-
-            const emailPattern =
-                /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-
-            if (
-                !emailPattern.test(
-                    email
-                )
-            ) {
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Please provide a valid email address."
-                });
-            }
-
-
-            const existing =
-                otpRequests.get(
-                    email
-                );
-
-
-            if (
-                existing &&
-                existing.lastSentAt &&
-                Date.now() -
-                    existing.lastSentAt <
-                    60 * 1000
-            ) {
-
-                return res.status(
-                    429
-                ).json({
-                    success: false,
-                    message:
-                        "Please wait before requesting another code."
-                });
-            }
-
-
-            const code =
-                generateOTP();
-
-
-            const codeHash =
-                hashOTP(
-                    code
-                );
-
-
-            otpRequests.set(
-                email,
-                {
-                    codeHash,
-
-                    expiresAt:
-                        Date.now() +
-                        10 * 60 * 1000,
-
-                    attempts: 0,
-
-                    lastSentAt:
-                        Date.now()
-                }
-            );
-
-
-            if (!resend) {
-
-                throw new Error(
-                    "RESEND_API_KEY is not configured."
-                );
-            }
-
-
-            if (!EMAIL_FROM) {
-
-                throw new Error(
-                    "EMAIL_FROM is not configured."
-                );
-            }
-
-
-            await resend.emails.send({
-                from:
-                    `${EMAIL_FROM_NAME} <${EMAIL_FROM}>`,
-
-                to: [
-                    email
-                ],
-
-                subject:
-                    "Your Legacy Lens AI verification code",
-
-                html: `
-<!DOCTYPE html>
-<html>
-<body style="
-    margin:0;
-    padding:40px 20px;
-    background:#f4f7fb;
-    font-family:Arial,sans-serif;
-">
-
-<div style="
-    max-width:600px;
-    margin:auto;
-    background:white;
-    padding:40px;
-    border-radius:20px;
-">
-
-<h1 style="
-    text-align:center;
-    color:#111827;
-">
-Legacy Lens AI
-</h1>
-
-<p style="
-    text-align:center;
-    color:#64748b;
-">
-Verify your email address
-</p>
-
-<div style="
-    margin:30px 0;
-    padding:30px;
-    background:#f8fafc;
-    border-radius:15px;
-    text-align:center;
-">
-
-<p>
-Your verification code is:
-</p>
-
-<div style="
-    font-size:36px;
-    font-weight:bold;
-    letter-spacing:8px;
-">
-${code}
-</div>
-
-<p style="
-    color:#64748b;
-">
-This code expires in 10 minutes.
-</p>
-
-</div>
-
-<p style="
-    color:#94a3b8;
-    text-align:center;
-    font-size:13px;
-">
-If you did not request this code,
-you can safely ignore this email.
-</p>
-
-</div>
-
-</body>
-</html>
-                `,
-
-                text:
-                    `Legacy Lens AI
-
-Your verification code is:
-
-${code}
-
-This code expires in 10 minutes.
-
-If you did not request this code,
-you can safely ignore this email.`
-            });
-
-
-            console.log(
-                `Verification code sent to ${email}`
-            );
-
-
-            return res.json({
-                success: true,
-                message:
-                    "Verification code sent."
-            });
-
-        } catch (error) {
-
-            console.error(
-                "Send verification error:",
-                error
-            );
-
-
-            if (email) {
-                otpRequests.delete(
-                    email
-                );
-            }
-
-
-            return res.status(
-                500
-            ).json({
-                success: false,
-                message:
-                    error.message ||
-                    "Unable to send verification email."
-            });
-        }
-    }
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| VERIFY CODE
-|--------------------------------------------------------------------------
-*/
-
-app.post(
-    "/api/verify-code",
-    verifyCodeLimiter,
-    async (req, res) => {
-
-        try {
-
-            const email =
-                normalizeEmail(
-                    req.body.email
-                );
-
-            const code =
-                String(
-                    req.body.code || ""
-                ).trim();
-
-
-            if (
-                !email ||
-                !code
-            ) {
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Email and verification code are required."
-                });
-            }
-
-
-            if (
-                !/^\d{6}$/.test(
-                    code
-                )
-            ) {
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Verification code must contain 6 digits."
-                });
-            }
-
-
-            const stored =
-                otpRequests.get(
-                    email
-                );
-
-
-            if (!stored) {
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "This verification code is invalid or has expired."
-                });
-            }
-
-
-            if (
-                Date.now() >
-                stored.expiresAt
-            ) {
-
-                otpRequests.delete(
-                    email
-                );
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "This verification code has expired."
-                });
-            }
-
-
-            if (
-                stored.attempts >=
-                5
-            ) {
-
-                otpRequests.delete(
-                    email
-                );
-
-                return res.status(
-                    429
-                ).json({
-                    success: false,
-                    message:
-                        "Too many incorrect attempts. Request a new code."
-                });
-            }
-
-
-            const submittedHash =
-                hashOTP(
-                    code
-                );
-
-
-            const submittedBuffer =
-                Buffer.from(
-                    submittedHash,
-                    "hex"
-                );
-
-
-            const storedBuffer =
-                Buffer.from(
-                    stored.codeHash,
-                    "hex"
-                );
-
-
-            const isValid =
-                submittedBuffer.length ===
-                    storedBuffer.length &&
-                crypto.timingSafeEqual(
-                    submittedBuffer,
-                    storedBuffer
-                );
-
-
-            if (!isValid) {
-
-                stored.attempts +=
-                    1;
-
-
-                return res.status(
-                    400
-                ).json({
-                    success: false,
-                    message:
-                        "Incorrect verification code."
-                });
-            }
-
-
-            otpRequests.delete(
-                email
-            );
-
-
-            console.log(
-                `Email verified: ${email}`
-            );
-
-
-            return res.json({
-                success: true,
-
-                verified:
-                    true,
-
-                message:
-                    "Email verified successfully."
-            });
-
-        } catch (error) {
-
-            console.error(
-                "Verification error:",
-                error
-            );
-
-
-            return res.status(
-                500
-            ).json({
-                success: false,
-                message:
-                    "Something went wrong."
-            });
-        }
-    }
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| CLEAN EXPIRED OTP
-|--------------------------------------------------------------------------
-*/
-
-setInterval(
-    () => {
-
-        const now =
-            Date.now();
-
-        for (
-            const [
-                email,
-                data
-            ] of otpRequests
-        ) {
-
-            if (
-                data.expiresAt <=
-                now
-            ) {
-
-                otpRequests.delete(
-                    email
-                );
-            }
-        }
-
-    },
-    60 * 1000
-);
-
 
 /*
 |--------------------------------------------------------------------------
@@ -1348,22 +995,21 @@ setInterval(
 app.use(
     (req, res) => {
 
-        res.status(
-            404
-        ).json({
-            success: false,
-            message:
-                "Endpoint not found.",
-            path:
-                req.originalUrl
-        });
+        return res.status(404)
+            .json({
+
+                success: false,
+
+                message:
+                    "Endpoint not found."
+
+            });
     }
 );
 
-
 /*
 |--------------------------------------------------------------------------
-| ERROR HANDLER
+| GLOBAL ERROR
 |--------------------------------------------------------------------------
 */
 
@@ -1376,71 +1022,39 @@ app.use(
     ) => {
 
         console.error(
-            "Server error:",
+            "Global server error:",
             error
         );
 
-        res.status(
-            500
-        ).json({
-            success: false,
-            message:
-                "Internal server error."
-        });
+        return res.status(500)
+            .json({
+
+                success: false,
+
+                message:
+                    "Internal server error."
+
+            });
     }
 );
 
-
 /*
 |--------------------------------------------------------------------------
-| START SERVER
+| START
 |--------------------------------------------------------------------------
 */
 
-async function startServer() {
+app.listen(
+    PORT,
+    () => {
 
-    try {
-
-        await loadFaceModels();
-
-        app.listen(
-            PORT,
-            () => {
-
-                console.log(
-                    "===================================="
-                );
-
-                console.log(
-                    "Legacy Lens AI backend"
-                );
-
-                console.log(
-                    `Running on port ${PORT}`
-                );
-
-                console.log(
-                    "Face recognition: READY"
-                );
-
-                console.log(
-                    "===================================="
-                );
-            }
+        console.log(
+            `Legacy Lens AI backend running on port ${PORT}`
         );
 
-    } catch (error) {
-
-        console.error(
-            "Failed to start server:",
-            error
+        console.log(
+            `Health: http://localhost:${PORT}/api/health`
         );
 
-        process.exit(
-            1
-        );
     }
-}
-
-
-startServer();
+);
