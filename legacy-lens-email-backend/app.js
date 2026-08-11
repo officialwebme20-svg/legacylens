@@ -1,4 +1,4 @@
-```js
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -58,20 +58,7 @@ app.get("/api/health", (req, res) => {
     });
 });
 
-/*
-|--------------------------------------------------------------------------
-| TEMPORARY FACE STORAGE
-|--------------------------------------------------------------------------
-|
-| IMPORTANT:
-| This Map is temporary.
-|
-| Render can restart your application, which will clear this data.
-|
-| For production, replace this with MongoDB, PostgreSQL,
-| Firebase Firestore, Supabase, etc.
-|
-*/
+
 
 const faceUsers = new Map();
 
@@ -711,4 +698,4 @@ app.listen(
 
     }
 );
-```
+
