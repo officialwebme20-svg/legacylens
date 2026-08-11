@@ -1,3 +1,9 @@
+import {
+    generateRegistrationOptions,
+    verifyRegistrationResponse,
+    generateAuthenticationOptions,
+    verifyAuthenticationResponse
+} from "@simplewebauthn/server";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
