@@ -1,7 +1,7 @@
 {
   "name": "legacy-lens-email-backend",
   "version": "1.0.0",
-  "description": "Legacy Lens AI email verification backend",
+  "description": "Legacy Lens AI backend",
   "main": "app.js",
   "type": "module",
   "scripts": {
