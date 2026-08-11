@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import { Resend } from "resend";
 
 dotenv.config();
 
@@ -11,22 +12,21 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
-const FRONTEND_URL =
-    process.env.FRONTEND_URL || "*";
+const FRONTEND_URL = process.env.FRONTEND_URL || "*";
 
-const BREVO_API_KEY =
-    process.env.BREVO_API_KEY;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 const EMAIL_FROM =
-    process.env.EMAIL_FROM;
+    process.env.EMAIL_FROM ||
+    "Legacy Lens AI <onboarding@resend.dev>";
 
-const EMAIL_FROM_NAME =
-    process.env.EMAIL_FROM_NAME ||
-    "Legacy Lens AI";
+const resend = RESEND_API_KEY
+    ? new Resend(RESEND_API_KEY)
+    : null;
 
 /*
 |--------------------------------------------------------------------------
-| SECURITY / MIDDLEWARE
+| SECURITY
 |--------------------------------------------------------------------------
 */
 
@@ -52,13 +52,49 @@ app.use(
 
 app.use(
     express.json({
-        limit: "200kb"
+        limit: "10mb"
     })
 );
 
 /*
 |--------------------------------------------------------------------------
+| BASIC REQUEST LOG
+|--------------------------------------------------------------------------
+*/
+
+app.use((req, res, next) => {
+    console.log(
+        `${new Date().toISOString()} ${req.method} ${req.path}`
+    );
+
+    next();
+});
+
+/*
+|--------------------------------------------------------------------------
+| HEALTH CHECK
+|--------------------------------------------------------------------------
+*/
+
+app.get("/api/health", (req, res) => {
+    return res.json({
+        success: true,
+        service: "Legacy Lens AI",
+        status: "online"
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
 | OTP STORAGE
+|--------------------------------------------------------------------------
+|
+| Temporary in-memory storage.
+|
+| Important:
+| On Render, this is reset whenever the server restarts.
+| For a production application, use a database/Redis.
+|
 |--------------------------------------------------------------------------
 */
 
@@ -69,11 +105,12 @@ const otpRequests = new Map();
 | FACE STORAGE
 |--------------------------------------------------------------------------
 |
-| IMPORTANT:
-| This Map is temporary memory storage.
-| Render can clear it when the service restarts.
-| For permanent face storage, use a database.
+| Temporary in-memory face descriptor storage.
 |
+| For production, store encrypted biometric templates in
+| a proper database with appropriate security controls.
+|
+|--------------------------------------------------------------------------
 */
 
 const faceUsers = new Map();
@@ -84,77 +121,61 @@ const faceUsers = new Map();
 |--------------------------------------------------------------------------
 */
 
-const sendCodeLimiter =
-    rateLimit({
-        windowMs:
-            15 * 60 * 1000,
+const sendCodeLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
 
-        max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
 
-        standardHeaders: true,
+    message: {
+        success: false,
+        message:
+            "Too many verification requests. Please try again later."
+    }
+});
 
-        legacyHeaders: false,
+const verifyCodeLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
 
-        message: {
-            success: false,
-            message:
-                "Too many verification requests. Please try again later."
-        }
-    });
+    standardHeaders: true,
+    legacyHeaders: false,
 
-const verifyCodeLimiter =
-    rateLimit({
-        windowMs:
-            15 * 60 * 1000,
+    message: {
+        success: false,
+        message:
+            "Too many verification attempts. Please try again later."
+    }
+});
 
-        max: 10,
+const faceRegisterLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
 
-        standardHeaders: true,
+    standardHeaders: true,
+    legacyHeaders: false,
 
-        legacyHeaders: false,
+    message: {
+        success: false,
+        message:
+            "Too many face registration attempts. Please try again later."
+    }
+});
 
-        message: {
-            success: false,
-            message:
-                "Too many verification attempts. Please try again later."
-        }
-    });
+const faceLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
 
-const faceRegisterLimiter =
-    rateLimit({
-        windowMs:
-            15 * 60 * 1000,
+    standardHeaders: true,
+    legacyHeaders: false,
 
-        max: 10,
-
-        standardHeaders: true,
-
-        legacyHeaders: false,
-
-        message: {
-            success: false,
-            message:
-                "Too many face registration attempts. Please try again later."
-        }
-    });
-
-const faceLoginLimiter =
-    rateLimit({
-        windowMs:
-            15 * 60 * 1000,
-
-        max: 20,
-
-        standardHeaders: true,
-
-        legacyHeaders: false,
-
-        message: {
-            success: false,
-            message:
-                "Too many face login attempts. Please try again later."
-        }
-    });
+    message: {
+        success: false,
+        message:
+            "Too many face login attempts. Please try again later."
+    }
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -169,17 +190,12 @@ function normalizeEmail(email) {
 }
 
 function validEmail(email) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-        email
-    );
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function generateOTP() {
     return crypto
-        .randomInt(
-            100000,
-            1000000
-        )
+        .randomInt(100000, 1000000)
         .toString();
 }
 
@@ -192,352 +208,60 @@ function hashOTP(code) {
 
 /*
 |--------------------------------------------------------------------------
-| FACE HELPERS
+| CLEAN EXPIRED OTP
 |--------------------------------------------------------------------------
 */
 
-function validateDescriptor(
-    descriptor
-) {
-    if (!Array.isArray(descriptor)) {
-        return false;
-    }
-
-    if (descriptor.length !== 128) {
-        return false;
-    }
-
-    return descriptor.every(
-        value =>
-            typeof value === "number" &&
-            Number.isFinite(value)
-    );
-}
-
-function faceDistance(a, b) {
-    if (
-        !Array.isArray(a) ||
-        !Array.isArray(b) ||
-        a.length !== b.length
-    ) {
-        return Infinity;
-    }
-
-    let sum = 0;
-
-    for (
-        let i = 0;
-        i < a.length;
-        i++
-    ) {
-        const difference =
-            a[i] - b[i];
-
-        sum +=
-            difference *
-            difference;
-    }
-
-    return Math.sqrt(sum);
-}
-
-function averageDescriptors(
-    descriptors
-) {
-    if (
-        !Array.isArray(descriptors) ||
-        descriptors.length === 0
-    ) {
-        return null;
-    }
-
-    const length =
-        descriptors[0].length;
-
-    const average =
-        new Array(length).fill(0);
-
-    for (
-        const descriptor
-        of descriptors
-    ) {
-        for (
-            let i = 0;
-            i < length;
-            i++
-        ) {
-            average[i] +=
-                descriptor[i];
-        }
-    }
-
-    for (
-        let i = 0;
-        i < length;
-        i++
-    ) {
-        average[i] /=
-            descriptors.length;
-    }
-
-    return average;
-}
-
-/*
-|--------------------------------------------------------------------------
-| CLEAN EXPIRED OTPs
-|--------------------------------------------------------------------------
-*/
-
-function cleanupExpiredCodes() {
+function cleanupExpiredOTPs() {
     const now = Date.now();
 
     for (
-        const [
-            email,
-            data
-        ] of otpRequests.entries()
+        const [email, data]
+        of otpRequests.entries()
     ) {
-        if (
-            data.expiresAt <= now
-        ) {
-            otpRequests.delete(
-                email
-            );
+        if (data.expiresAt <= now) {
+            otpRequests.delete(email);
         }
     }
 }
 
 setInterval(
-    cleanupExpiredCodes,
+    cleanupExpiredOTPs,
     60 * 1000
 );
 
 /*
 |--------------------------------------------------------------------------
-| HEALTH CHECK
+| SEND EMAIL USING RESEND
 |--------------------------------------------------------------------------
 */
 
-app.get(
-    "/api/health",
-    (req, res) => {
-        return res.json({
-            success: true,
-            service:
-                "Legacy Lens AI",
-            status: "online"
-        });
-    }
-);
-
-/*
-|--------------------------------------------------------------------------
-| BREVO EMAIL
-|--------------------------------------------------------------------------
-*/
-
-async function sendBrevoEmail({
-    recipient,
-    subject,
-    htmlContent,
-    textContent
+async function sendVerificationEmail({
+    email,
+    code
 }) {
-    if (!BREVO_API_KEY) {
+
+    if (!resend) {
         throw new Error(
-            "BREVO_API_KEY is not configured on the server."
+            "RESEND_API_KEY is not configured on the server."
         );
     }
 
-    if (!EMAIL_FROM) {
-        throw new Error(
-            "EMAIL_FROM is not configured on the server."
-        );
-    }
+    const result =
+        await resend.emails.send({
+            from: EMAIL_FROM,
 
-    const response =
-        await fetch(
-            "https://api.brevo.com/v3/smtp/email",
-            {
-                method: "POST",
+            to: [email],
 
-                headers: {
-                    accept:
-                        "application/json",
+            subject:
+                "Your Legacy Lens AI verification code",
 
-                    "api-key":
-                        BREVO_API_KEY,
-
-                    "content-type":
-                        "application/json"
-                },
-
-                body:
-                    JSON.stringify({
-                        sender: {
-                            name:
-                                EMAIL_FROM_NAME,
-
-                            email:
-                                EMAIL_FROM
-                        },
-
-                        to: [
-                            {
-                                email:
-                                    recipient
-                            }
-                        ],
-
-                        subject,
-
-                        htmlContent,
-
-                        textContent
-                    })
-            }
-        );
-
-    let data = {};
-
-    try {
-        data =
-            await response.json();
-    } catch {
-        data = {};
-    }
-
-    if (!response.ok) {
-        console.error(
-            "Brevo API error:",
-            data
-        );
-
-        throw new Error(
-            data.message ||
-            "Brevo could not send the email."
-        );
-    }
-
-    return data;
-}
-
-/*
-|--------------------------------------------------------------------------
-| SEND VERIFICATION CODE
-|--------------------------------------------------------------------------
-*/
-
-app.post(
-    "/api/send-code",
-    sendCodeLimiter,
-    async (req, res) => {
-
-        let email = "";
-
-        try {
-
-            email =
-                normalizeEmail(
-                    req.body.email
-                );
-
-            /*
-            |--------------------------------------------------------------
-            | EMAIL VALIDATION
-            |--------------------------------------------------------------
-            */
-
-            if (!email) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Email address is required."
-                });
-            }
-
-            if (!validEmail(email)) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Please provide a valid email address."
-                });
-            }
-
-            /*
-            |--------------------------------------------------------------
-            | RESEND COOLDOWN
-            |--------------------------------------------------------------
-            */
-
-            const existing =
-                otpRequests.get(
-                    email
-                );
-
-            if (
-                existing &&
-                existing.lastSentAt &&
-                Date.now() -
-                    existing.lastSentAt <
-                    60 * 1000
-            ) {
-                return res.status(429).json({
-                    success: false,
-                    message:
-                        "Please wait before requesting another code."
-                });
-            }
-
-            /*
-            |--------------------------------------------------------------
-            | GENERATE OTP
-            |--------------------------------------------------------------
-            */
-
-            const code =
-                generateOTP();
-
-            const codeHash =
-                hashOTP(code);
-
-            const expiresAt =
-                Date.now() +
-                10 * 60 * 1000;
-
-            /*
-            |--------------------------------------------------------------
-            | STORE OTP
-            |--------------------------------------------------------------
-            */
-
-            otpRequests.set(
-                email,
-                {
-                    codeHash,
-
-                    expiresAt,
-
-                    attempts: 0,
-
-                    lastSentAt:
-                        Date.now()
-                }
-            );
-
-            /*
-            |--------------------------------------------------------------
-            | EMAIL HTML
-            |--------------------------------------------------------------
-            */
-
-            const htmlContent = `
+            html: `
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Legacy Lens AI Verification</title>
 </head>
 
@@ -556,25 +280,27 @@ padding:20px;
 
 <div style="
 background:#ffffff;
-border-radius:18px;
+border-radius:20px;
 padding:40px 30px;
-box-shadow:0 8px 30px rgba(0,0,0,0.08);
+box-shadow:0 10px 40px rgba(0,0,0,0.08);
 ">
 
-<div style="text-align:center;">
+<div style="
+text-align:center;
+">
 
 <h1 style="
 margin:0;
-color:#111827;
 font-size:28px;
+color:#111827;
 ">
 Legacy Lens AI
 </h1>
 
 <p style="
-margin-top:10px;
 color:#64748b;
-font-size:16px;
+font-size:15px;
+margin-top:10px;
 ">
 Verify your email address
 </p>
@@ -590,7 +316,7 @@ text-align:center;
 ">
 
 <p style="
-margin:0 0 18px;
+margin:0 0 15px;
 color:#475569;
 font-size:15px;
 ">
@@ -598,7 +324,7 @@ Your verification code is:
 </p>
 
 <div style="
-font-size:36px;
+font-size:38px;
 font-weight:700;
 letter-spacing:10px;
 color:#111827;
@@ -623,35 +349,29 @@ font-size:14px;
 line-height:1.6;
 text-align:center;
 ">
-If you did not request this verification
-code, you can safely ignore this email.
+If you did not request this code,
+you can safely ignore this email.
 </p>
 
 <p style="
 margin-top:30px;
 color:#94a3b8;
-font-size:13px;
+font-size:12px;
 text-align:center;
 ">
-© ${new Date().getFullYear()}
-Legacy Lens AI
+© ${new Date().getFullYear()} Legacy Lens AI
 </p>
 
 </div>
+
 </div>
 
 </body>
 </html>
-`;
+`,
 
-            /*
-            |--------------------------------------------------------------
-            | TEXT EMAIL
-            |--------------------------------------------------------------
-            */
-
-            const textContent = `
-Legacy Lens AI
+            text:
+`Legacy Lens AI
 
 Verify your email address.
 
@@ -661,27 +381,159 @@ ${code}
 
 This code expires in 10 minutes.
 
-If you did not request this verification code,
+If you did not request this code,
 you can safely ignore this email.
 
-© ${new Date().getFullYear()} Legacy Lens AI
-`;
+© ${new Date().getFullYear()} Legacy Lens AI`
+        });
+
+    if (result.error) {
+        console.error(
+            "Resend error:",
+            result.error
+        );
+
+        throw new Error(
+            result.error.message ||
+            "Unable to send verification email."
+        );
+    }
+
+    return result;
+}
+
+/*
+|--------------------------------------------------------------------------
+| SEND VERIFICATION CODE
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+    "/api/send-code",
+    sendCodeLimiter,
+    async (req, res) => {
+
+        let email = "";
+
+        try {
+
+            email =
+                normalizeEmail(
+                    req.body.email
+                );
 
             /*
-            |--------------------------------------------------------------
-            | SEND
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | VALIDATE EMAIL
+            |--------------------------------------------------------------------------
             */
 
-            await sendBrevoEmail({
-                recipient: email,
+            if (!email) {
 
-                subject:
-                    "Your Legacy Lens AI verification code",
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Email address is required."
+                });
 
-                htmlContent,
+            }
 
-                textContent
+            if (!validEmail(email)) {
+
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Please provide a valid email address."
+                });
+
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | CHECK RESEND CONFIGURATION
+            |--------------------------------------------------------------------------
+            */
+
+            if (!resend) {
+
+                console.error(
+                    "RESEND_API_KEY is missing."
+                );
+
+                return res.status(500).json({
+                    success: false,
+                    message:
+                        "Email service is not configured on the server."
+                });
+
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | RESEND COOLDOWN
+            |--------------------------------------------------------------------------
+            */
+
+            const existing =
+                otpRequests.get(email);
+
+            if (
+                existing &&
+                existing.lastSentAt &&
+                Date.now() -
+                    existing.lastSentAt <
+                    60 * 1000
+            ) {
+
+                return res.status(429).json({
+                    success: false,
+                    message:
+                        "Please wait before requesting another code."
+                });
+
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | GENERATE OTP
+            |--------------------------------------------------------------------------
+            */
+
+            const code =
+                generateOTP();
+
+            const codeHash =
+                hashOTP(code);
+
+            const expiresAt =
+                Date.now() +
+                10 * 60 * 1000;
+
+            /*
+            |--------------------------------------------------------------------------
+            | STORE OTP
+            |--------------------------------------------------------------------------
+            */
+
+            otpRequests.set(
+                email,
+                {
+                    codeHash,
+                    expiresAt,
+                    attempts: 0,
+                    lastSentAt: Date.now()
+                }
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | SEND EMAIL
+            |--------------------------------------------------------------------------
+            */
+
+            await sendVerificationEmail({
+                email,
+                code
             });
 
             console.log(
@@ -697,14 +549,12 @@ you can safely ignore this email.
         } catch (error) {
 
             console.error(
-                "Send verification error:",
+                "Send code error:",
                 error
             );
 
             if (email) {
-                otpRequests.delete(
-                    email
-                );
+                otpRequests.delete(email);
             }
 
             return res.status(500).json({
@@ -741,62 +591,64 @@ app.post(
                 ).trim();
 
             /*
-            |--------------------------------------------------------------
-            | VALIDATION
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | VALIDATE
+            |--------------------------------------------------------------------------
             */
 
             if (!email || !code) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Email and verification code are required."
                 });
+
             }
 
             if (!validEmail(email)) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Please provide a valid email address."
                 });
+
             }
 
-            if (
-                !/^\d{6}$/.test(
-                    code
-                )
-            ) {
+            if (!/^\d{6}$/.test(code)) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Verification code must contain 6 digits."
                 });
+
             }
 
             /*
-            |--------------------------------------------------------------
-            | GET STORED OTP
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | GET STORED CODE
+            |--------------------------------------------------------------------------
             */
 
             const stored =
-                otpRequests.get(
-                    email
-                );
+                otpRequests.get(email);
 
             if (!stored) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "This verification code is invalid or has expired."
                 });
+
             }
 
             /*
-            |--------------------------------------------------------------
-            | EXPIRATION
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | CHECK EXPIRATION
+            |--------------------------------------------------------------------------
             */
 
             if (
@@ -804,42 +656,38 @@ app.post(
                 stored.expiresAt
             ) {
 
-                otpRequests.delete(
-                    email
-                );
+                otpRequests.delete(email);
 
                 return res.status(400).json({
                     success: false,
                     message:
                         "This verification code has expired."
                 });
+
             }
 
             /*
-            |--------------------------------------------------------------
-            | ATTEMPT LIMIT
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | CHECK ATTEMPTS
+            |--------------------------------------------------------------------------
             */
 
-            if (
-                stored.attempts >= 5
-            ) {
+            if (stored.attempts >= 5) {
 
-                otpRequests.delete(
-                    email
-                );
+                otpRequests.delete(email);
 
                 return res.status(429).json({
                     success: false,
                     message:
                         "Too many incorrect attempts. Request a new code."
                 });
+
             }
 
             /*
-            |--------------------------------------------------------------
-            | HASH CODE
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | HASH SUBMITTED CODE
+            |--------------------------------------------------------------------------
             */
 
             const submittedHash =
@@ -858,9 +706,9 @@ app.post(
                 );
 
             /*
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
             | SAFE COMPARISON
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
             */
 
             const isValid =
@@ -872,9 +720,9 @@ app.post(
                 );
 
             /*
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
             | INVALID CODE
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
             */
 
             if (!isValid) {
@@ -883,20 +731,20 @@ app.post(
 
                 return res.status(400).json({
                     success: false,
+                    verified: false,
                     message:
                         "Incorrect verification code."
                 });
+
             }
 
             /*
-            |--------------------------------------------------------------
-            | VERIFIED
-            |--------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | SUCCESS
+            |--------------------------------------------------------------------------
             */
 
-            otpRequests.delete(
-                email
-            );
+            otpRequests.delete(email);
 
             console.log(
                 `Email verified: ${email}`
@@ -904,11 +752,8 @@ app.post(
 
             return res.json({
                 success: true,
-
                 verified: true,
-
                 email,
-
                 message:
                     "Email verified successfully."
             });
@@ -916,18 +761,121 @@ app.post(
         } catch (error) {
 
             console.error(
-                "Verification error:",
+                "Verify code error:",
                 error
             );
 
             return res.status(500).json({
                 success: false,
                 message:
-                    "Something went wrong."
+                    "Something went wrong while verifying the code."
             });
+
         }
     }
 );
+
+/*
+|--------------------------------------------------------------------------
+| FACE FUNCTIONS
+|--------------------------------------------------------------------------
+*/
+
+function validateDescriptor(
+    descriptor
+) {
+
+    if (!Array.isArray(descriptor)) {
+        return false;
+    }
+
+    if (descriptor.length !== 128) {
+        return false;
+    }
+
+    return descriptor.every(
+        value =>
+            typeof value === "number" &&
+            Number.isFinite(value)
+    );
+}
+
+function faceDistance(
+    a,
+    b
+) {
+
+    if (
+        !Array.isArray(a) ||
+        !Array.isArray(b) ||
+        a.length !== b.length
+    ) {
+        return Infinity;
+    }
+
+    let sum = 0;
+
+    for (
+        let i = 0;
+        i < a.length;
+        i++
+    ) {
+
+        const difference =
+            a[i] - b[i];
+
+        sum +=
+            difference *
+            difference;
+    }
+
+    return Math.sqrt(sum);
+}
+
+function averageDescriptors(
+    descriptors
+) {
+
+    if (!descriptors.length) {
+        return null;
+    }
+
+    const length =
+        descriptors[0].length;
+
+    const average =
+        new Array(length).fill(0);
+
+    for (
+        const descriptor
+        of descriptors
+    ) {
+
+        for (
+            let i = 0;
+            i < length;
+            i++
+        ) {
+
+            average[i] +=
+                descriptor[i];
+
+        }
+    }
+
+    for (
+        let i = 0;
+        i < length;
+        i++
+    ) {
+
+        average[i] /=
+            descriptors.length;
+
+    }
+
+    return average;
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -951,33 +899,37 @@ app.post(
                 req.body.descriptors;
 
             if (!email) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Email address is required."
                 });
+
             }
 
             if (!validEmail(email)) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Please provide a valid email address."
                 });
+
             }
 
             if (
-                !Array.isArray(
-                    descriptors
-                ) ||
+                !Array.isArray(descriptors) ||
                 descriptors.length < 3 ||
                 descriptors.length > 10
             ) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Please provide between 3 and 10 face captures."
                 });
+
             }
 
             for (
@@ -990,12 +942,15 @@ app.post(
                         descriptor
                     )
                 ) {
+
                     return res.status(400).json({
                         success: false,
                         message:
                             "Invalid face data received."
                     });
+
                 }
+
             }
 
             const faceTemplate =
@@ -1008,17 +963,17 @@ app.post(
                     faceTemplate
                 )
             ) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Unable to create face template."
                 });
+
             }
 
             const existing =
-                faceUsers.get(
-                    email
-                );
+                faceUsers.get(email);
 
             faceUsers.set(
                 email,
@@ -1042,9 +997,7 @@ app.post(
 
             return res.json({
                 success: true,
-
                 registered: true,
-
                 message:
                     "Face registered successfully."
             });
@@ -1061,6 +1014,7 @@ app.post(
                 message:
                     "Unable to register your face."
             });
+
         }
     }
 );
@@ -1083,21 +1037,20 @@ app.post(
                 );
 
             if (!email) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Email address is required."
                 });
+
             }
 
             const user =
-                faceUsers.get(
-                    email
-                );
+                faceUsers.get(email);
 
             return res.json({
                 success: true,
-
                 registered:
                     Boolean(user)
             });
@@ -1114,6 +1067,7 @@ app.post(
                 message:
                     "Unable to check face status."
             });
+
         }
     }
 );
@@ -1140,19 +1094,23 @@ app.post(
                 req.body.descriptor;
 
             if (!email) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Email address is required."
                 });
+
             }
 
             if (!validEmail(email)) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Please provide a valid email address."
                 });
+
             }
 
             if (
@@ -1160,29 +1118,28 @@ app.post(
                     descriptor
                 )
             ) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Invalid face data."
                 });
+
             }
 
             const user =
-                faceUsers.get(
-                    email
-                );
+                faceUsers.get(email);
 
             if (!user) {
+
                 return res.status(404).json({
                     success: false,
-
                     authenticated: false,
-
                     registered: false,
-
                     message:
                         "No face is registered for this account."
                 });
+
             }
 
             const distance =
@@ -1190,12 +1147,6 @@ app.post(
                     descriptor,
                     user.faceTemplate
                 );
-
-            /*
-            |--------------------------------------------------------------
-            | MATCH THRESHOLD
-            |--------------------------------------------------------------
-            */
 
             const MATCH_THRESHOLD =
                 0.45;
@@ -1212,19 +1163,12 @@ app.post(
 
                 return res.status(401).json({
                     success: false,
-
                     authenticated: false,
-
                     message:
                         "Face not recognized. Please try again."
                 });
-            }
 
-            /*
-            |--------------------------------------------------------------
-            | SUCCESS
-            |--------------------------------------------------------------
-            */
+            }
 
             const sessionToken =
                 crypto
@@ -1237,14 +1181,9 @@ app.post(
 
             return res.json({
                 success: true,
-
                 authenticated: true,
-
                 email,
-
-                token:
-                    sessionToken,
-
+                token: sessionToken,
                 message:
                     "Face recognized successfully."
             });
@@ -1258,9 +1197,11 @@ app.post(
 
             return res.status(500).json({
                 success: false,
+                authenticated: false,
                 message:
                     "Unable to complete face login."
             });
+
         }
     }
 );
@@ -1283,23 +1224,22 @@ app.post(
                 );
 
             if (!email) {
+
                 return res.status(400).json({
                     success: false,
                     message:
                         "Email address is required."
                 });
+
             }
 
             const existed =
-                faceUsers.delete(
-                    email
-                );
+                faceUsers.delete(email);
 
             return res.json({
                 success: true,
 
-                removed:
-                    existed,
+                removed: existed,
 
                 message:
                     existed
@@ -1319,6 +1259,7 @@ app.post(
                 message:
                     "Unable to remove face data."
             });
+
         }
     }
 );
@@ -1334,38 +1275,33 @@ app.use(
 
         return res.status(404).json({
             success: false,
-
             message:
                 "Endpoint not found."
         });
+
     }
 );
 
 /*
 |--------------------------------------------------------------------------
-| GLOBAL ERROR HANDLER
+| GLOBAL ERROR
 |--------------------------------------------------------------------------
 */
 
 app.use(
-    (
-        error,
-        req,
-        res,
-        next
-    ) => {
+    (error, req, res, next) => {
 
         console.error(
-            "Server error:",
+            "Global server error:",
             error
         );
 
         return res.status(500).json({
             success: false,
-
             message:
                 "Internal server error."
         });
+
     }
 );
 
@@ -1377,31 +1313,43 @@ app.use(
 
 app.listen(
     PORT,
-    "0.0.0.0",
     () => {
 
         console.log(
-            `Legacy Lens AI backend running on port ${PORT}`
+            "===================================="
         );
 
         console.log(
-            `Health endpoint: /api/health`
+            "Legacy Lens AI server started"
         );
 
         console.log(
-            `Send code endpoint: /api/send-code`
+            `Port: ${PORT}`
         );
 
         console.log(
-            `Verify code endpoint: /api/verify-code`
+            `Health: /api/health`
         );
 
         console.log(
-            `Face registration endpoint: /api/face/register`
+            `Send code: /api/send-code`
         );
 
         console.log(
-            `Face login endpoint: /api/face/login`
+            `Verify code: /api/verify-code`
         );
+
+        console.log(
+            `Face register: /api/face/register`
+        );
+
+        console.log(
+            `Face login: /api/face/login`
+        );
+
+        console.log(
+            "===================================="
+        );
+
     }
 );
