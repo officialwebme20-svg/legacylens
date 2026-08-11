@@ -1,15 +1,44 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
-import crypto from "crypto";
 
 dotenv.config();
 
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+
+app.use(helmet());
+
+app.use(
+    cors({
+        origin: process.env.FRONTEND_URL || true
+    })
+);
+
+app.use(express.json());
+
+app.get("/api/health", (req, res) => {
+    res.json({
+        success: true,
+        service: "Legacy Lens AI",
+        status: "online"
+    });
+});
+
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        message: "Endpoint not found."
+    });
+});
+
+app.listen(PORT, () => {
+    console.log(
+        `Legacy Lens AI backend running on port ${PORT}`
+    );
+});
 
 const FRONTEND_URL =
     process.env.FRONTEND_URL || true;
