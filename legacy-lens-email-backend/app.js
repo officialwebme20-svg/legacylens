@@ -17,14 +17,20 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "*";
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 
 const EMAIL_FROM =
-    process.env.EMAIL_FROM || "";
+    process.env.EMAIL_FROM ||
+    process.env.BREVO_SENDER_EMAIL ||
+    "";
 
 const EMAIL_FROM_NAME =
-    process.env.EMAIL_FROM_NAME || "Legacy Lens AI";
+    process.env.EMAIL_FROM_NAME ||
+    process.env.BREVO_SENDER_NAME ||
+    "Legacy Lens AI";
 
 const brevo = BREVO_API_KEY
     ? new BrevoClient({
-        apiKey: BREVO_API_KEY
+        apiKey: BREVO_API_KEY,
+        timeoutInSeconds: 30,
+        maxRetries: 2
     })
     : null;
 
@@ -71,7 +77,12 @@ app.get("/api/health", (req, res) => {
         success: true,
         service: "Legacy Lens AI",
         status: "online",
-        emailService: brevo ? "configured" : "not_configured",
+        emailService: brevo
+            ? "configured"
+            : "not_configured",
+        emailSender: EMAIL_FROM
+            ? "configured"
+            : "not_configured",
         faceService: "online"
     });
 });
@@ -158,7 +169,9 @@ function cleanupExpiredOTPs() {
         const [email, data]
         of otpRequests.entries()
     ) {
-        if (data.expiresAt <= now) {
+        if (
+            data.expiresAt <= now
+        ) {
             otpRequests.delete(email);
         }
     }
@@ -173,35 +186,42 @@ async function sendVerificationEmail({
     email,
     code
 }) {
+    if (!BREVO_API_KEY) {
+        throw new Error(
+            "BREVO_API_KEY is not configured on the server."
+        );
+    }
+
     if (!brevo) {
         throw new Error(
-            "Brevo API key is not configured on the server."
+            "Brevo email service is not initialized."
         );
     }
 
     if (!EMAIL_FROM) {
         throw new Error(
-            "Email sender is not configured on the server."
+            "EMAIL_FROM or BREVO_SENDER_EMAIL is not configured on the server."
         );
     }
 
     const result =
-        await brevo.transactionalEmails.sendTransacEmail({
-            sender: {
-                email: EMAIL_FROM,
-                name: EMAIL_FROM_NAME
-            },
+        await brevo.transactionalEmails.sendTransacEmail(
+            {
+                sender: {
+                    email: EMAIL_FROM,
+                    name: EMAIL_FROM_NAME
+                },
 
-            to: [
-                {
-                    email
-                }
-            ],
+                to: [
+                    {
+                        email
+                    }
+                ],
 
-            subject:
-                "Your Legacy Lens AI verification code",
+                subject:
+                    "Your Legacy Lens AI Vault Verification Code",
 
-            htmlContent: `
+                htmlContent: `
 <!DOCTYPE html>
 <html>
 <head>
@@ -247,7 +267,7 @@ margin-top:10px;
 color:#64748b;
 font-size:15px;
 ">
-Email verification
+Security Vault Verification
 </p>
 
 </div>
@@ -294,7 +314,7 @@ line-height:1.7;
 color:#64748b;
 text-align:center;
 ">
-If you did not request this verification code,
+If you did not request a vault PIN reset,
 you can safely ignore this email.
 </p>
 
@@ -315,20 +335,21 @@ text-align:center;
 </html>
 `,
 
-            textContent:
+                textContent:
 `Legacy Lens AI
 
-Your email verification code is:
+Your Legacy Lens AI Vault verification code is:
 
 ${code}
 
 This code expires in 10 minutes.
 
-If you did not request this code,
+If you did not request a vault PIN reset,
 you can safely ignore this email.
 
 © ${new Date().getFullYear()} Legacy Lens AI`
-        });
+            }
+        );
 
     return result;
 }
@@ -337,14 +358,12 @@ app.post(
     "/api/send-code",
     sendCodeLimiter,
     async (req, res) => {
-
         let email = "";
 
         try {
-
             email =
                 normalizeEmail(
-                    req.body.email
+                    req.body?.email
                 );
 
             if (!email) {
@@ -363,7 +382,7 @@ app.post(
                 });
             }
 
-            if (!brevo) {
+            if (!BREVO_API_KEY) {
                 console.error(
                     "BREVO_API_KEY is missing."
                 );
@@ -375,7 +394,19 @@ app.post(
                 });
             }
 
+            if (!brevo) {
+                return res.status(500).json({
+                    success: false,
+                    message:
+                        "Brevo email service is not initialized."
+                });
+            }
+
             if (!EMAIL_FROM) {
+                console.error(
+                    "No email sender configured."
+                );
+
                 return res.status(500).json({
                     success: false,
                     message:
@@ -384,7 +415,9 @@ app.post(
             }
 
             const existing =
-                otpRequests.get(email);
+                otpRequests.get(
+                    email
+                );
 
             if (
                 existing &&
@@ -393,10 +426,21 @@ app.post(
                     existing.lastSentAt <
                     60 * 1000
             ) {
+                const remaining =
+                    Math.ceil(
+                        (
+                            60000 -
+                            (
+                                Date.now() -
+                                existing.lastSentAt
+                            )
+                        ) / 1000
+                    );
+
                 return res.status(429).json({
                     success: false,
                     message:
-                        "Please wait before requesting another code."
+                        `Please wait ${remaining} seconds before requesting another code.`
                 });
             }
 
@@ -406,8 +450,11 @@ app.post(
             const codeHash =
                 hashOTP(code);
 
+            const now =
+                Date.now();
+
             const expiresAt =
-                Date.now() +
+                now +
                 10 * 60 * 1000;
 
             otpRequests.set(
@@ -416,30 +463,46 @@ app.post(
                     codeHash,
                     expiresAt,
                     attempts: 0,
-                    lastSentAt: Date.now()
+                    lastSentAt: now,
+                    verified: false,
+                    verifiedAt: null
                 }
             );
 
             try {
+                const result =
+                    await sendVerificationEmail({
+                        email,
+                        code
+                    });
 
-                await sendVerificationEmail({
-                    email,
-                    code
-                });
+                console.log(
+                    `Brevo accepted email for ${email}`
+                );
+
+                if (
+                    result?.messageId
+                ) {
+                    console.log(
+                        `Brevo message ID: ${result.messageId}`
+                    );
+                }
 
             } catch (emailError) {
-
                 console.error(
                     "Brevo email error:",
                     emailError
                 );
 
-                otpRequests.delete(email);
+                otpRequests.delete(
+                    email
+                );
 
                 return res.status(500).json({
                     success: false,
                     message:
-                        "We couldn't send your verification email. Please try again."
+                        emailError?.message ||
+                        "We couldn't send your verification email. Please check your Brevo sender and API configuration."
                 });
             }
 
@@ -455,19 +518,21 @@ app.post(
             });
 
         } catch (error) {
-
             console.error(
                 "Send code error:",
                 error
             );
 
             if (email) {
-                otpRequests.delete(email);
+                otpRequests.delete(
+                    email
+                );
             }
 
             return res.status(500).json({
                 success: false,
                 message:
+                    error?.message ||
                     "Unable to send verification code."
             });
         }
@@ -478,52 +543,62 @@ app.post(
     "/api/verify-code",
     verifyCodeLimiter,
     async (req, res) => {
-
         try {
-
             const email =
                 normalizeEmail(
-                    req.body.email
+                    req.body?.email
                 );
 
             const code =
                 String(
-                    req.body.code || ""
+                    req.body?.code || ""
                 ).trim();
 
-            if (!email || !code) {
+            if (
+                !email ||
+                !code
+            ) {
                 return res.status(400).json({
                     success: false,
+                    verified: false,
                     message:
                         "Email and verification code are required."
                 });
             }
 
-            if (!validEmail(email)) {
+            if (
+                !validEmail(email)
+            ) {
                 return res.status(400).json({
                     success: false,
+                    verified: false,
                     message:
                         "Please provide a valid email address."
                 });
             }
 
-            if (!/^\d{6}$/.test(code)) {
+            if (
+                !/^\d{6}$/.test(code)
+            ) {
                 return res.status(400).json({
                     success: false,
+                    verified: false,
                     message:
                         "Verification code must contain 6 digits."
                 });
             }
 
             const stored =
-                otpRequests.get(email);
+                otpRequests.get(
+                    email
+                );
 
             if (!stored) {
                 return res.status(400).json({
                     success: false,
                     verified: false,
                     message:
-                        "This verification code is invalid or has expired."
+                        "This verification code is invalid or has expired. Request a new code."
                 });
             }
 
@@ -531,20 +606,24 @@ app.post(
                 Date.now() >
                 stored.expiresAt
             ) {
-
-                otpRequests.delete(email);
+                otpRequests.delete(
+                    email
+                );
 
                 return res.status(400).json({
                     success: false,
                     verified: false,
                     message:
-                        "This verification code has expired."
+                        "This verification code has expired. Request a new code."
                 });
             }
 
-            if (stored.attempts >= 5) {
-
-                otpRequests.delete(email);
+            if (
+                stored.attempts >= 5
+            ) {
+                otpRequests.delete(
+                    email
+                );
 
                 return res.status(429).json({
                     success: false,
@@ -578,8 +657,12 @@ app.post(
                 );
 
             if (!isValid) {
-
                 stored.attempts += 1;
+
+                otpRequests.set(
+                    email,
+                    stored
+                );
 
                 return res.status(400).json({
                     success: false,
@@ -589,7 +672,16 @@ app.post(
                 });
             }
 
-            otpRequests.delete(email);
+            stored.verified =
+                true;
+
+            stored.verifiedAt =
+                Date.now();
+
+            otpRequests.set(
+                email,
+                stored
+            );
 
             console.log(
                 `Email verified: ${email}`
@@ -604,7 +696,6 @@ app.post(
             });
 
         } catch (error) {
-
             console.error(
                 "Verify code error:",
                 error
@@ -623,19 +714,28 @@ app.post(
 function validateDescriptor(
     descriptor
 ) {
-
-    if (!Array.isArray(descriptor)) {
+    if (
+        !Array.isArray(
+            descriptor
+        )
+    ) {
         return false;
     }
 
-    if (descriptor.length !== 128) {
+    if (
+        descriptor.length !==
+        128
+    ) {
         return false;
     }
 
     return descriptor.every(
         value =>
-            typeof value === "number" &&
-            Number.isFinite(value)
+            typeof value ===
+                "number" &&
+            Number.isFinite(
+                value
+            )
     );
 }
 
@@ -643,11 +743,11 @@ function faceDistance(
     a,
     b
 ) {
-
     if (
         !Array.isArray(a) ||
         !Array.isArray(b) ||
-        a.length !== b.length
+        a.length !==
+            b.length
     ) {
         return Infinity;
     }
@@ -659,7 +759,6 @@ function faceDistance(
         i < a.length;
         i++
     ) {
-
         const difference =
             a[i] - b[i];
 
@@ -668,14 +767,17 @@ function faceDistance(
             difference;
     }
 
-    return Math.sqrt(sum);
+    return Math.sqrt(
+        sum
+    );
 }
 
 function averageDescriptors(
     descriptors
 ) {
-
-    if (!descriptors.length) {
+    if (
+        !descriptors.length
+    ) {
         return null;
     }
 
@@ -683,19 +785,19 @@ function averageDescriptors(
         descriptors[0].length;
 
     const average =
-        new Array(length).fill(0);
+        new Array(
+            length
+        ).fill(0);
 
     for (
         const descriptor
         of descriptors
     ) {
-
         for (
             let i = 0;
             i < length;
             i++
         ) {
-
             average[i] +=
                 descriptor[i];
         }
@@ -706,7 +808,6 @@ function averageDescriptors(
         i < length;
         i++
     ) {
-
         average[i] /=
             descriptors.length;
     }
@@ -718,16 +819,14 @@ app.post(
     "/api/face/register",
     faceRegisterLimiter,
     async (req, res) => {
-
         try {
-
             const email =
                 normalizeEmail(
-                    req.body.email
+                    req.body?.email
                 );
 
             const descriptors =
-                req.body.descriptors;
+                req.body?.descriptors;
 
             if (!email) {
                 return res.status(400).json({
@@ -737,7 +836,9 @@ app.post(
                 });
             }
 
-            if (!validEmail(email)) {
+            if (
+                !validEmail(email)
+            ) {
                 return res.status(400).json({
                     success: false,
                     message:
@@ -746,7 +847,9 @@ app.post(
             }
 
             if (
-                !Array.isArray(descriptors) ||
+                !Array.isArray(
+                    descriptors
+                ) ||
                 descriptors.length < 3 ||
                 descriptors.length > 10
             ) {
@@ -761,13 +864,11 @@ app.post(
                 const descriptor
                 of descriptors
             ) {
-
                 if (
                     !validateDescriptor(
                         descriptor
                     )
                 ) {
-
                     return res.status(400).json({
                         success: false,
                         message:
@@ -786,7 +887,6 @@ app.post(
                     faceTemplate
                 )
             ) {
-
                 return res.status(400).json({
                     success: false,
                     message:
@@ -795,7 +895,9 @@ app.post(
             }
 
             const existing =
-                faceUsers.get(email);
+                faceUsers.get(
+                    email
+                );
 
             faceUsers.set(
                 email,
@@ -822,7 +924,6 @@ app.post(
             });
 
         } catch (error) {
-
             console.error(
                 "Face registration error:",
                 error
@@ -840,12 +941,10 @@ app.post(
 app.post(
     "/api/face/status",
     async (req, res) => {
-
         try {
-
             const email =
                 normalizeEmail(
-                    req.body.email
+                    req.body?.email
                 );
 
             if (!email) {
@@ -856,8 +955,20 @@ app.post(
                 });
             }
 
+            if (
+                !validEmail(email)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Please provide a valid email address."
+                });
+            }
+
             const user =
-                faceUsers.get(email);
+                faceUsers.get(
+                    email
+                );
 
             return res.json({
                 success: true,
@@ -866,7 +977,6 @@ app.post(
             });
 
         } catch (error) {
-
             console.error(
                 "Face status error:",
                 error
@@ -885,16 +995,14 @@ app.post(
     "/api/face/login",
     faceLoginLimiter,
     async (req, res) => {
-
         try {
-
             const email =
                 normalizeEmail(
-                    req.body.email
+                    req.body?.email
                 );
 
             const descriptor =
-                req.body.descriptor;
+                req.body?.descriptor;
 
             if (!email) {
                 return res.status(400).json({
@@ -904,7 +1012,9 @@ app.post(
                 });
             }
 
-            if (!validEmail(email)) {
+            if (
+                !validEmail(email)
+            ) {
                 return res.status(400).json({
                     success: false,
                     message:
@@ -917,7 +1027,6 @@ app.post(
                     descriptor
                 )
             ) {
-
                 return res.status(400).json({
                     success: false,
                     message:
@@ -926,10 +1035,11 @@ app.post(
             }
 
             const user =
-                faceUsers.get(email);
+                faceUsers.get(
+                    email
+                );
 
             if (!user) {
-
                 return res.status(404).json({
                     success: false,
                     authenticated: false,
@@ -953,7 +1063,6 @@ app.post(
                 MATCH_THRESHOLD;
 
             if (!matched) {
-
                 console.warn(
                     `Face mismatch for ${email}. Distance: ${distance}`
                 );
@@ -968,8 +1077,12 @@ app.post(
 
             const sessionToken =
                 crypto
-                    .randomBytes(32)
-                    .toString("hex");
+                    .randomBytes(
+                        32
+                    )
+                    .toString(
+                        "hex"
+                    );
 
             console.log(
                 `Face login successful for ${email}`
@@ -979,13 +1092,13 @@ app.post(
                 success: true,
                 authenticated: true,
                 email,
-                token: sessionToken,
+                token:
+                    sessionToken,
                 message:
                     "Face recognized successfully."
             });
 
         } catch (error) {
-
             console.error(
                 "Face login error:",
                 error
@@ -1004,16 +1117,13 @@ app.post(
 app.post(
     "/api/face/remove",
     async (req, res) => {
-
         try {
-
             const email =
                 normalizeEmail(
-                    req.body.email
+                    req.body?.email
                 );
 
             if (!email) {
-
                 return res.status(400).json({
                     success: false,
                     message:
@@ -1021,12 +1131,25 @@ app.post(
                 });
             }
 
+            if (
+                !validEmail(email)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Please provide a valid email address."
+                });
+            }
+
             const existed =
-                faceUsers.delete(email);
+                faceUsers.delete(
+                    email
+                );
 
             return res.json({
                 success: true,
-                removed: existed,
+                removed:
+                    existed,
                 message:
                     existed
                         ? "Face data removed successfully."
@@ -1034,7 +1157,6 @@ app.post(
             });
 
         } catch (error) {
-
             console.error(
                 "Face removal error:",
                 error
@@ -1051,7 +1173,6 @@ app.post(
 
 app.use(
     (req, res) => {
-
         return res.status(404).json({
             success: false,
             message:
@@ -1061,8 +1182,12 @@ app.use(
 );
 
 app.use(
-    (error, req, res, next) => {
-
+    (
+        error,
+        req,
+        res,
+        next
+    ) => {
         console.error(
             "Global server error:",
             error
@@ -1079,7 +1204,6 @@ app.use(
 app.listen(
     PORT,
     () => {
-
         console.log(
             "Legacy Lens AI server started"
         );
@@ -1115,220 +1239,20 @@ app.listen(
         console.log(
             "Face remove: /api/face/remove"
         );
-    }
-);
-const vaultResetCodes = new Map();
 
-function generateVaultCode() {
-    return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-function normalizeVaultEmail(email) {
-    return String(email || "").trim().toLowerCase();
-}
-
-function isValidVaultEmail(email) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-app.post("/api/send-code", async (req, res) => {
-    try {
-        const email = normalizeVaultEmail(req.body?.email);
-
-        if (!isValidVaultEmail(email)) {
-            return res.status(400).json({
-                success: false,
-                message: "Enter a valid email address."
-            });
-        }
-
-        const now = Date.now();
-        const existing = vaultResetCodes.get(email);
-
-        if (existing && existing.lastSentAt && now - existing.lastSentAt < 60000) {
-            const remaining = Math.ceil(
-                (60000 - (now - existing.lastSentAt)) / 1000
-            );
-
-            return res.status(429).json({
-                success: false,
-                message: `Please wait ${remaining} seconds before requesting another code.`
-            });
-        }
-
-        const code = generateVaultCode();
-
-        vaultResetCodes.set(email, {
-            code,
-            expiresAt: now + 10 * 60 * 1000,
-            lastSentAt: now,
-            attempts: 0,
-            verified: false
-        });
-
-        const brevoResponse = await fetch(
-            "https://api.brevo.com/v3/smtp/email",
-            {
-                method: "POST",
-                headers: {
-                    "accept": "application/json",
-                    "api-key": process.env.BREVO_API_KEY,
-                    "content-type": "application/json"
-                },
-                body: JSON.stringify({
-                    sender: {
-                        name: process.env.BREVO_SENDER_NAME || "Legacy Lens AI",
-                        email: process.env.BREVO_SENDER_EMAIL
-                    },
-                    to: [
-                        {
-                            email
-                        }
-                    ],
-                    subject: "Your Legacy Lens AI Vault Verification Code",
-                    htmlContent: `
-                        <div style="font-family:Arial,sans-serif;background:#f5f7fa;padding:40px 20px">
-                            <div style="max-width:520px;margin:auto;background:#ffffff;border-radius:16px;padding:35px;text-align:center;border:1px solid #e5e7eb">
-                                <h1 style="margin:0 0 10px;color:#111827">Legacy Lens AI</h1>
-                                <p style="color:#6b7280;font-size:15px">
-                                    You requested to reset your security vault PIN.
-                                </p>
-                                <div style="margin:30px 0;padding:20px;background:#f9fafb;border-radius:12px">
-                                    <div style="font-size:12px;color:#6b7280;margin-bottom:8px">
-                                        VERIFICATION CODE
-                                    </div>
-                                    <div style="font-size:38px;font-weight:700;letter-spacing:10px;color:#111827">
-                                        ${code}
-                                    </div>
-                                </div>
-                                <p style="color:#6b7280;font-size:13px">
-                                    This code expires in 10 minutes.
-                                </p>
-                                <p style="color:#9ca3af;font-size:12px;margin-top:25px">
-                                    If you did not request this code, you can safely ignore this email.
-                                </p>
-                            </div>
-                        </div>
-                    `
-                })
-            }
+        console.log(
+            `Email service: ${
+                brevo
+                    ? "READY"
+                    : "NOT CONFIGURED"
+            }`
         );
 
-        const brevoData = await brevoResponse.json().catch(() => ({}));
-
-        if (!brevoResponse.ok) {
-            vaultResetCodes.delete(email);
-
-            console.error("Brevo error:", brevoData);
-
-            return res.status(500).json({
-                success: false,
-                message: "Unable to send the verification code. Please try again."
-            });
-        }
-
-        return res.json({
-            success: true,
-            message: "Verification code sent successfully."
-        });
-
-    } catch (error) {
-        console.error("Send vault code error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Unable to send verification code."
-        });
+        console.log(
+            `Email sender: ${
+                EMAIL_FROM ||
+                "NOT CONFIGURED"
+            }`
+        );
     }
-});
-
-app.post("/api/verify-code", async (req, res) => {
-    try {
-        const email = normalizeVaultEmail(req.body?.email);
-        const code = String(req.body?.code || "").trim();
-
-        if (!isValidVaultEmail(email)) {
-            return res.status(400).json({
-                success: false,
-                verified: false,
-                message: "Invalid email address."
-            });
-        }
-
-        if (!/^\d{6}$/.test(code)) {
-            return res.status(400).json({
-                success: false,
-                verified: false,
-                message: "Enter the 6-digit verification code."
-            });
-        }
-
-        const record = vaultResetCodes.get(email);
-
-        if (!record) {
-            return res.status(400).json({
-                success: false,
-                verified: false,
-                message: "No active verification code was found. Request a new code."
-            });
-        }
-
-        if (Date.now() > record.expiresAt) {
-            vaultResetCodes.delete(email);
-
-            return res.status(400).json({
-                success: false,
-                verified: false,
-                message: "This verification code has expired. Request a new code."
-            });
-        }
-
-        if (record.attempts >= 5) {
-            vaultResetCodes.delete(email);
-
-            return res.status(429).json({
-                success: false,
-                verified: false,
-                message: "Too many incorrect attempts. Request a new code."
-            });
-        }
-
-        if (code !== record.code) {
-            record.attempts += 1;
-
-            return res.status(400).json({
-                success: false,
-                verified: false,
-                message: "Incorrect verification code."
-            });
-        }
-
-        record.verified = true;
-        record.verifiedAt = Date.now();
-
-        return res.json({
-            success: true,
-            verified: true,
-            message: "Verification code confirmed."
-        });
-
-    } catch (error) {
-        console.error("Verify vault code error:", error);
-
-        return res.status(500).json({
-            success: false,
-            verified: false,
-            message: "Unable to verify the code."
-        });
-    }
-});
-
-setInterval(() => {
-    const now = Date.now();
-
-    for (const [email, record] of vaultResetCodes.entries()) {
-        if (now > record.expiresAt) {
-            vaultResetCodes.delete(email);
-        }
-    }
-}, 60000);
+);
