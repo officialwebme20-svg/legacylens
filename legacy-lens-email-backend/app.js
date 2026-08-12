@@ -1117,3 +1117,218 @@ app.listen(
         );
     }
 );
+const vaultResetCodes = new Map();
+
+function generateVaultCode() {
+    return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function normalizeVaultEmail(email) {
+    return String(email || "").trim().toLowerCase();
+}
+
+function isValidVaultEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+app.post("/api/send-code", async (req, res) => {
+    try {
+        const email = normalizeVaultEmail(req.body?.email);
+
+        if (!isValidVaultEmail(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Enter a valid email address."
+            });
+        }
+
+        const now = Date.now();
+        const existing = vaultResetCodes.get(email);
+
+        if (existing && existing.lastSentAt && now - existing.lastSentAt < 60000) {
+            const remaining = Math.ceil(
+                (60000 - (now - existing.lastSentAt)) / 1000
+            );
+
+            return res.status(429).json({
+                success: false,
+                message: `Please wait ${remaining} seconds before requesting another code.`
+            });
+        }
+
+        const code = generateVaultCode();
+
+        vaultResetCodes.set(email, {
+            code,
+            expiresAt: now + 10 * 60 * 1000,
+            lastSentAt: now,
+            attempts: 0,
+            verified: false
+        });
+
+        const brevoResponse = await fetch(
+            "https://api.brevo.com/v3/smtp/email",
+            {
+                method: "POST",
+                headers: {
+                    "accept": "application/json",
+                    "api-key": process.env.BREVO_API_KEY,
+                    "content-type": "application/json"
+                },
+                body: JSON.stringify({
+                    sender: {
+                        name: process.env.BREVO_SENDER_NAME || "Legacy Lens AI",
+                        email: process.env.BREVO_SENDER_EMAIL
+                    },
+                    to: [
+                        {
+                            email
+                        }
+                    ],
+                    subject: "Your Legacy Lens AI Vault Verification Code",
+                    htmlContent: `
+                        <div style="font-family:Arial,sans-serif;background:#f5f7fa;padding:40px 20px">
+                            <div style="max-width:520px;margin:auto;background:#ffffff;border-radius:16px;padding:35px;text-align:center;border:1px solid #e5e7eb">
+                                <h1 style="margin:0 0 10px;color:#111827">Legacy Lens AI</h1>
+                                <p style="color:#6b7280;font-size:15px">
+                                    You requested to reset your security vault PIN.
+                                </p>
+                                <div style="margin:30px 0;padding:20px;background:#f9fafb;border-radius:12px">
+                                    <div style="font-size:12px;color:#6b7280;margin-bottom:8px">
+                                        VERIFICATION CODE
+                                    </div>
+                                    <div style="font-size:38px;font-weight:700;letter-spacing:10px;color:#111827">
+                                        ${code}
+                                    </div>
+                                </div>
+                                <p style="color:#6b7280;font-size:13px">
+                                    This code expires in 10 minutes.
+                                </p>
+                                <p style="color:#9ca3af;font-size:12px;margin-top:25px">
+                                    If you did not request this code, you can safely ignore this email.
+                                </p>
+                            </div>
+                        </div>
+                    `
+                })
+            }
+        );
+
+        const brevoData = await brevoResponse.json().catch(() => ({}));
+
+        if (!brevoResponse.ok) {
+            vaultResetCodes.delete(email);
+
+            console.error("Brevo error:", brevoData);
+
+            return res.status(500).json({
+                success: false,
+                message: "Unable to send the verification code. Please try again."
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "Verification code sent successfully."
+        });
+
+    } catch (error) {
+        console.error("Send vault code error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to send verification code."
+        });
+    }
+});
+
+app.post("/api/verify-code", async (req, res) => {
+    try {
+        const email = normalizeVaultEmail(req.body?.email);
+        const code = String(req.body?.code || "").trim();
+
+        if (!isValidVaultEmail(email)) {
+            return res.status(400).json({
+                success: false,
+                verified: false,
+                message: "Invalid email address."
+            });
+        }
+
+        if (!/^\d{6}$/.test(code)) {
+            return res.status(400).json({
+                success: false,
+                verified: false,
+                message: "Enter the 6-digit verification code."
+            });
+        }
+
+        const record = vaultResetCodes.get(email);
+
+        if (!record) {
+            return res.status(400).json({
+                success: false,
+                verified: false,
+                message: "No active verification code was found. Request a new code."
+            });
+        }
+
+        if (Date.now() > record.expiresAt) {
+            vaultResetCodes.delete(email);
+
+            return res.status(400).json({
+                success: false,
+                verified: false,
+                message: "This verification code has expired. Request a new code."
+            });
+        }
+
+        if (record.attempts >= 5) {
+            vaultResetCodes.delete(email);
+
+            return res.status(429).json({
+                success: false,
+                verified: false,
+                message: "Too many incorrect attempts. Request a new code."
+            });
+        }
+
+        if (code !== record.code) {
+            record.attempts += 1;
+
+            return res.status(400).json({
+                success: false,
+                verified: false,
+                message: "Incorrect verification code."
+            });
+        }
+
+        record.verified = true;
+        record.verifiedAt = Date.now();
+
+        return res.json({
+            success: true,
+            verified: true,
+            message: "Verification code confirmed."
+        });
+
+    } catch (error) {
+        console.error("Verify vault code error:", error);
+
+        return res.status(500).json({
+            success: false,
+            verified: false,
+            message: "Unable to verify the code."
+        });
+    }
+});
+
+setInterval(() => {
+    const now = Date.now();
+
+    for (const [email, record] of vaultResetCodes.entries()) {
+        if (now > record.expiresAt) {
+            vaultResetCodes.delete(email);
+        }
+    }
+}, 60000);
