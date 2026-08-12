@@ -1,5 +1,5 @@
 {
-  "name": "legacy-lens-email-backend",
+  "name": "legacy-lens-backend",
   "version": "1.0.0",
   "description": "Legacy Lens AI backend",
   "main": "app.js",
