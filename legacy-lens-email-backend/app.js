@@ -7,10 +7,11 @@ import crypto from "crypto";
 import { BrevoClient } from "@getbrevo/brevo";
 
 dotenv.config();
-
 const app = express();
 
-const PORT = Number(process.env.PORT) || 3000;
+app.set("trust proxy", 1);
+
+const PORT = process.env.PORT || 3000;
 
 const FRONTEND_URL =
     process.env.FRONTEND_URL || "*";
