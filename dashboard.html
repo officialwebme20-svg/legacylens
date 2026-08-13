@@ -1,0 +1,3928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Legacy Lens AI</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --blue: #1769ff;
+    --blue-dark: #0d47c9;
+    --blue-light: #edf4ff;
+    --blue-soft: #f5f8ff;
+    --white: #ffffff;
+    --text: #14213d;
+    --muted: #718096;
+    --border: #e4eaf3;
+    --danger: #e53935;
+    --green: #18a66b;
+    --shadow: 0 10px 30px rgba(30, 65, 120, .08);
+}
+
+body {
+    font-family: Inter, Arial, sans-serif;
+    background: #f7faff;
+    color: var(--text);
+    min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+.app {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 260px;
+    background: white;
+    border-right: 1px solid var(--border);
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+}
+
+.logo {
+    padding: 25px 22px;
+    border-bottom: 1px solid var(--border);
+}
+
+.logo strong {
+    color: var(--blue);
+    font-size: 20px;
+}
+
+.logo span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.nav {
+    padding: 18px 12px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.nav button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: #667085;
+    padding: 13px 14px;
+    border-radius: 10px;
+    text-align: left;
+    margin-bottom: 4px;
+    transition: .2s;
+}
+
+.nav button:hover {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.nav button.active {
+    background: var(--blue);
+    color: white;
+}
+
+.sidebar-profile {
+    padding: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.profile-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--blue);
+    color: white;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+
+.profile-name {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.profile-email {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+    word-break: break-word;
+}
+
+.signout {
+    margin-top: 15px;
+    width: 100%;
+    border: 1px solid #ffd4d4;
+    color: var(--danger);
+    background: #fff7f7;
+    padding: 10px;
+    border-radius: 9px;
+}
+
+.main {
+    margin-left: 260px;
+    width: calc(100% - 260px);
+}
+
+.topbar {
+    height: 76px;
+    background: white;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 30px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
+.page-title {
+    font-size: 22px;
+    font-weight: 750;
+}
+
+.page-subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 3px;
+}
+
+.top-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.top-actions button {
+    border: 1px solid var(--border);
+    background: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+}
+
+.content {
+    padding: 30px;
+}
+
+.view {
+    display: none;
+}
+
+.view.active {
+    display: block;
+}
+
+.card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: var(--shadow);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 22px;
+}
+
+.card-title {
+    font-size: 20px;
+    font-weight: 750;
+}
+
+.card-subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+.primary {
+    border: 0;
+    background: var(--blue);
+    color: white;
+    padding: 11px 17px;
+    border-radius: 9px;
+    font-weight: 650;
+}
+
+.primary:hover {
+    background: var(--blue-dark);
+}
+
+.secondary {
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--text);
+    padding: 10px 15px;
+    border-radius: 9px;
+}
+
+.danger {
+    border: 1px solid #ffd1d1;
+    background: #fff6f6;
+    color: var(--danger);
+    padding: 10px 15px;
+    border-radius: 9px;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.stat {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+}
+
+.stat-label {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.stat-value {
+    font-size: 30px;
+    font-weight: 800;
+    color: var(--blue);
+    margin-top: 8px;
+}
+
+.quick-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 25px;
+}
+
+.quick {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    padding: 17px;
+    text-align: left;
+    transition: .2s;
+}
+
+.quick:hover {
+    border-color: #b8cdfc;
+    transform: translateY(-2px);
+}
+
+.quick strong {
+    display: block;
+    font-size: 13px;
+}
+
+.quick span {
+    color: var(--muted);
+    display: block;
+    margin-top: 5px;
+    font-size: 11px;
+}
+
+.toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.search {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: white;
+    border-radius: 10px;
+    padding: 12px 14px;
+    outline: none;
+}
+
+.search:focus,
+.field input:focus,
+.field textarea:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(23,105,255,.08);
+}
+
+.collection-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 17px;
+}
+
+.item-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+.item-preview {
+    width: 100%;
+    height: 210px;
+    background: var(--blue-soft);
+    object-fit: cover;
+}
+
+.item-video {
+    width: 100%;
+    height: 210px;
+    background: #111;
+}
+
+.item-body {
+    padding: 16px;
+}
+
+.item-title {
+    font-size: 14px;
+    font-weight: 750;
+}
+
+.item-desc {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 7px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.item-meta {
+    color: #8b95a7;
+    font-size: 10px;
+    margin-top: 10px;
+}
+
+.item-actions {
+    display: flex;
+    gap: 7px;
+    margin-top: 13px;
+}
+
+.small-button {
+    border: 1px solid var(--border);
+    background: white;
+    padding: 7px 10px;
+    border-radius: 7px;
+    font-size: 11px;
+}
+
+.empty {
+    grid-column: 1 / -1;
+    padding: 45px;
+    background: white;
+    border: 1px dashed #cfd8e8;
+    border-radius: 15px;
+    text-align: center;
+    color: var(--muted);
+}
+
+.upload-zone {
+    border: 2px dashed #bfd0ee;
+    border-radius: 15px;
+    padding: 30px;
+    text-align: center;
+    background: var(--blue-soft);
+    margin-bottom: 20px;
+}
+
+.upload-zone input {
+    display: none;
+}
+
+.upload-zone label {
+    display: inline-block;
+    background: var(--blue);
+    color: white;
+    padding: 11px 18px;
+    border-radius: 9px;
+    cursor: pointer;
+}
+
+.upload-zone p {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 10px;
+}
+
+.password-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.password-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 15px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.password-site {
+    flex: 1;
+}
+
+.password-site strong {
+    display: block;
+    font-size: 13px;
+}
+
+.password-site span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.password-hidden {
+    color: #9aa5b7;
+    letter-spacing: 3px;
+}
+
+.chat {
+    height: 480px;
+    overflow-y: auto;
+    padding: 10px;
+    background: #f8fbff;
+    border-radius: 13px;
+    border: 1px solid var(--border);
+}
+
+.message {
+    max-width: 80%;
+    padding: 12px 15px;
+    margin-bottom: 12px;
+    border-radius: 13px;
+    line-height: 1.6;
+    font-size: 13px;
+    white-space: pre-wrap;
+}
+
+.message.user {
+    background: var(--blue);
+    color: white;
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+}
+
+.message.ai {
+    background: white;
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+}
+
+.ai-input-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.ai-input {
+    flex: 1;
+    min-height: 50px;
+    max-height: 130px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px;
+    outline: none;
+}
+
+.creator-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+}
+
+.creator {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    padding: 20px;
+    text-align: center;
+}
+
+.creator img {
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 5px solid var(--blue-light);
+    margin-bottom: 12px;
+}
+
+.creator h3 {
+    font-size: 16px;
+}
+
+.creator p {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+.about-text {
+    line-height: 1.8;
+    color: #596579;
+    font-size: 13px;
+}
+
+.account-panel {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+.field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.field input,
+.field textarea,
+.field select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 11px;
+    outline: none;
+    background: white;
+}
+
+.field textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,25,55,.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+}
+
+.modal.show {
+    display: flex;
+}
+
+.modal-box {
+    width: min(620px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: white;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 25px 80px rgba(0,0,0,.18);
+}
+
+.modal-title {
+    font-size: 19px;
+    font-weight: 800;
+}
+
+.modal-subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 5px 0 20px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.toast {
+    position: fixed;
+    right: 22px;
+    bottom: 22px;
+    background: #172033;
+    color: white;
+    padding: 13px 17px;
+    border-radius: 10px;
+    font-size: 12px;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: .3s;
+    z-index: 200;
+}
+
+.toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.toast.error {
+    background: #c62828;
+}
+
+.mobile-menu {
+    display: none;
+}
+
+.file-preview {
+    width: 100%;
+    min-height: 350px;
+    border: 0;
+    border-radius: 10px;
+}
+
+.security-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+.security-option {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    padding: 20px;
+}
+
+.security-option strong {
+    font-size: 14px;
+}
+
+.security-option p {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 8px 0 14px;
+}
+
+.status {
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.status.online {
+    color: var(--green);
+}
+
+.status.offline {
+    color: var(--danger);
+}
+
+@media(max-width:1100px) {
+    .stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .quick-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .collection-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media(max-width:800px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: .25s;
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    .main {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .mobile-menu {
+        display: block;
+        border: 1px solid var(--border);
+        background: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 9px;
+        margin-right: 10px;
+    }
+
+    .topbar {
+        padding: 0 15px;
+    }
+
+    .content {
+        padding: 18px;
+    }
+
+    .section-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .stats,
+    .collection-grid,
+    .creator-grid,
+    .account-panel,
+    .security-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .quick-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media(max-width:500px) {
+    .quick-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats {
+        grid-template-columns: 1fr;
+    }
+
+    .message {
+        max-width: 94%;
+    }
+
+    .ai-input-row {
+        flex-direction: column;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<aside class="sidebar" id="sidebar">
+
+    <div class="logo">
+        <strong>Legacy Lens AI</strong>
+        <span>Private Digital Workspace</span>
+    </div>
+
+    <nav class="nav">
+
+        <button class="active" data-view="overview">
+            Dashboard
+        </button>
+
+        <button data-view="ai">
+            Legacy Lens AI
+        </button>
+
+        <button data-view="memories">
+            Memories
+        </button>
+
+        <button data-view="documents">
+            Documents
+        </button>
+
+        <button data-view="videos">
+            Videos
+        </button>
+
+        <button data-view="vault">
+            Secure Vault
+        </button>
+
+        <button data-view="passwords">
+            Password Vault
+        </button>
+
+        <button data-view="account">
+            Account
+        </button>
+
+        <button data-view="security">
+            Security
+        </button>
+
+        <button data-view="about">
+            About
+        </button>
+
+    </nav>
+
+    <div class="sidebar-profile">
+
+        <div class="profile-row">
+
+            <div class="avatar" id="sideAvatar">
+                U
+            </div>
+
+            <div>
+                <div class="profile-name" id="sideName">
+                    User
+                </div>
+
+                <div class="profile-email" id="sideEmail">
+                    user@example.com
+                </div>
+            </div>
+
+        </div>
+
+        <button class="signout" id="logoutButton">
+            Sign Out
+        </button>
+
+    </div>
+
+</aside>
+
+<main class="main">
+
+<header class="topbar">
+
+    <div style="display:flex;align-items:center;">
+
+        <button class="mobile-menu" id="mobileMenu">
+            ☰
+        </button>
+
+        <div>
+            <div class="page-title" id="pageTitle">
+                Overview
+            </div>
+
+            <div class="page-subtitle" id="pageSubtitle">
+                Your private digital life, organized securely.
+            </div>
+        </div>
+
+    </div>
+
+    <div class="top-actions">
+
+        <button id="searchButton">
+            Search
+        </button>
+
+        <button id="notificationsButton">
+            Notifications
+        </button>
+
+    </div>
+
+</header>
+
+<div class="content">
+
+<section class="view active" id="overview">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Welcome back, <span id="welcomeName">User</span>
+            </div>
+
+            <div class="card-subtitle">
+                Your personal digital workspace is ready.
+            </div>
+        </div>
+
+        <button class="primary" data-action="ai">
+            Ask Legacy Lens AI
+        </button>
+
+    </div>
+
+    <div class="stats">
+
+        <div class="stat">
+            <div class="stat-label">Memories</div>
+            <div class="stat-value" id="memoryCount">0</div>
+        </div>
+
+        <div class="stat">
+            <div class="stat-label">Documents</div>
+            <div class="stat-value" id="documentCount">0</div>
+        </div>
+
+        <div class="stat">
+            <div class="stat-label">Videos</div>
+            <div class="stat-value" id="videoCount">0</div>
+        </div>
+
+        <div class="stat">
+            <div class="stat-label">Vault Items</div>
+            <div class="stat-value" id="vaultCount">0</div>
+        </div>
+
+    </div>
+
+    <div class="quick-grid">
+
+        <button class="quick" data-action="memory">
+            <strong>Upload Memory</strong>
+            <span>Add a real photo.</span>
+        </button>
+
+        <button class="quick" data-action="document">
+            <strong>Upload Document</strong>
+            <span>Add a real document.</span>
+        </button>
+
+        <button class="quick" data-action="video">
+            <strong>Upload Video</strong>
+            <span>Add a real video.</span>
+        </button>
+
+        <button class="quick" data-action="vault">
+            <strong>Open Vault</strong>
+            <span>Access private files.</span>
+        </button>
+
+        <button class="quick" data-action="ai">
+            <strong>Ask AI</strong>
+            <span>Talk to Legacy Lens AI.</span>
+        </button>
+
+    </div>
+
+    <div class="card">
+
+        <div class="card-title">
+            Recent Activity
+        </div>
+
+        <div id="recentActivity" style="margin-top:15px;">
+            <div class="empty">
+                No activity yet.
+            </div>
+        </div>
+
+    </div>
+
+</section>
+
+<section class="view" id="ai">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Legacy Lens AI
+            </div>
+
+            <div class="card-subtitle">
+                Your intelligent personal assistant.
+            </div>
+        </div>
+
+        <button class="secondary" id="clearChat">
+            Clear Conversation
+        </button>
+
+    </div>
+
+    <div class="card">
+
+        <div class="chat" id="chat">
+
+            <div class="message ai">
+                Hello. I am Legacy Lens AI. I can help you understand the Legacy Lens platform, organize ideas, answer questions and assist you with your digital workspace.
+            </div>
+
+        </div>
+
+        <div class="ai-input-row">
+
+            <textarea
+                class="ai-input"
+                id="aiInput"
+                placeholder="Ask Legacy Lens AI anything..."
+            ></textarea>
+
+            <button class="primary" id="sendAI">
+                Send
+            </button>
+
+        </div>
+
+    </div>
+
+</section>
+
+<section class="view" id="memories">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Memories
+            </div>
+
+            <div class="card-subtitle">
+                Preserve real photos and memories.
+            </div>
+        </div>
+
+        <button class="primary" id="newMemoryButton">
+            Upload Memory
+        </button>
+
+    </div>
+
+    <div class="toolbar">
+        <input
+            class="search"
+            id="memorySearch"
+            placeholder="Search memories..."
+        >
+    </div>
+
+    <div class="collection-grid" id="memoryGrid"></div>
+
+</section>
+
+<section class="view" id="documents">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Documents
+            </div>
+
+            <div class="card-subtitle">
+                Store real PDF, Word, Excel and other documents.
+            </div>
+        </div>
+
+        <button class="primary" id="newDocumentButton">
+            Upload Document
+        </button>
+
+    </div>
+
+    <div class="toolbar">
+        <input
+            class="search"
+            id="documentSearch"
+            placeholder="Search documents..."
+        >
+    </div>
+
+    <div class="collection-grid" id="documentGrid"></div>
+
+</section>
+
+<section class="view" id="videos">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Videos
+            </div>
+
+            <div class="card-subtitle">
+                Store and watch your real personal videos.
+            </div>
+        </div>
+
+        <button class="primary" id="newVideoButton">
+            Upload Video
+        </button>
+
+    </div>
+
+    <div class="toolbar">
+        <input
+            class="search"
+            id="videoSearch"
+            placeholder="Search videos..."
+        >
+    </div>
+
+    <div class="collection-grid" id="videoGrid"></div>
+
+</section>
+
+<section class="view" id="vault">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Secure Vault
+            </div>
+
+            <div class="card-subtitle">
+                Your private local file vault.
+            </div>
+        </div>
+
+        <button class="primary" id="vaultUploadButton">
+            Upload Private File
+        </button>
+
+    </div>
+
+    <div id="vaultLocked" class="card">
+
+        <div style="text-align:center;padding:30px;">
+
+            <div style="font-size:30px;margin-bottom:12px;">
+                Secure Vault
+            </div>
+
+            <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">
+                Enter your vault PIN to continue.
+            </p>
+
+            <input
+                id="vaultPinInput"
+                type="password"
+                maxlength="12"
+                placeholder="Vault PIN"
+                style="padding:12px;border:1px solid var(--border);border-radius:9px;width:240px;max-width:100%;"
+            >
+
+            <div style="margin-top:12px;">
+                <button class="primary" id="unlockVault">
+                    Unlock Vault
+                </button>
+            </div>
+
+            <p style="color:var(--danger);font-size:11px;margin-top:16px;">
+                Your vault PIN cannot be reset from this application.
+            </p>
+
+        </div>
+
+    </div>
+
+    <div id="vaultUnlocked" style="display:none;">
+
+        <div class="toolbar">
+
+            <input
+                class="search"
+                id="vaultSearch"
+                placeholder="Search vault..."
+            >
+
+            <button class="secondary" id="lockVault">
+                Lock
+            </button>
+
+        </div>
+
+        <div class="collection-grid" id="vaultGrid"></div>
+
+    </div>
+
+</section>
+
+<section class="view" id="passwords">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Password Vault
+            </div>
+
+            <div class="card-subtitle">
+                Store important credentials locally.
+            </div>
+        </div>
+
+        <button class="primary" id="newPasswordButton">
+            Save Password
+        </button>
+
+    </div>
+
+    <div class="toolbar">
+        <input
+            class="search"
+            id="passwordSearch"
+            placeholder="Search passwords..."
+        >
+    </div>
+
+    <div class="card">
+
+        <div class="password-list" id="passwordList"></div>
+
+    </div>
+
+</section>
+
+<section class="view" id="account">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Account Information
+            </div>
+
+            <div class="card-subtitle">
+                Your Legacy Lens AI account.
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card">
+
+        <div class="account-panel">
+
+            <div class="field">
+                <label>Full Name</label>
+                <input id="accountName" value="Demo User" readonly>
+            </div>
+
+            <div class="field">
+                <label>Email Address</label>
+                <input id="accountEmail" value="demo@example.com" readonly>
+            </div>
+
+            <div class="field">
+                <label>Account ID</label>
+                <input id="accountId" value="LOCAL-ACCOUNT" readonly>
+            </div>
+
+            <div class="field">
+                <label>Authentication</label>
+                <input value="Local Demo Account" readonly>
+            </div>
+
+            <div class="field">
+                <label>Email Verification</label>
+                <input value="Demo Verified" readonly>
+            </div>
+
+            <div class="field">
+                <label>Account Status</label>
+                <input value="Active" readonly>
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+<section class="view" id="security">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                Security Center
+            </div>
+
+            <div class="card-subtitle">
+                Review your local application security.
+            </div>
+        </div>
+
+    </div>
+
+    <div class="security-grid">
+
+        <div class="security-option">
+            <strong>IndexedDB Storage</strong>
+            <p>
+                Real files are stored locally using IndexedDB rather than being converted into notes.
+            </p>
+            <span class="status online">
+                ● Available
+            </span>
+        </div>
+
+        <div class="security-option">
+            <strong>Secure Vault</strong>
+            <p>
+                The private vault requires a PIN before its contents can be accessed.
+            </p>
+            <span class="status online">
+                ● Enabled
+            </span>
+        </div>
+
+        <div class="security-option">
+            <strong>AI API</strong>
+            <p>
+              
+            </p>
+            <span class="status" id="aiStatus">
+                ● Checking
+            </span>
+        </div>
+
+        <div class="security-option">
+            <strong>Vault PIN</strong>
+            <p>
+                There is no password reset feature. Losing the PIN means the vault cannot be unlocked through this application.
+            </p>
+            <span class="status online">
+                ● No Reset
+            </span>
+        </div>
+
+    </div>
+
+</section>
+
+<section class="view" id="about">
+
+    <div class="section-header">
+
+        <div>
+            <div class="card-title">
+                About Legacy Lens AI
+            </div>
+
+            <div class="card-subtitle">
+                The people behind the platform.
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card">
+
+        <p class="about-text">
+            Legacy Lens AI is a private personal digital workspace designed to bring important parts of your digital life together. Users can organize real memories, videos, documents, private files and passwords while also using an intelligent AI assistant.
+        </p>
+
+        <p class="about-text" style="margin-top:15px;">
+            Legacy Lens AI was developed by Web Me, with Temilolouwa Victor serving as CEO.
+        </p>
+
+    </div>
+
+    <div class="creator-grid" style="margin-top:20px;">
+
+        <div class="creator">
+
+            <img
+                src="img/WhatsApp Image 2025-06-20 at 22.26.16_eb6c630e.jpg"
+                alt="Web Me"
+            >
+
+            <h3>
+                Web Me
+            </h3>
+
+            <p>
+                Developer / Creator
+            </p>
+
+        </div>
+
+        <div class="creator">
+
+            <img
+                src="img/temi.jpg"
+                alt="Temilolouwa Victor"
+            >
+
+            <h3>
+                Temilolouwa Victor
+            </h3>
+
+            <p>
+                Chief Executive Officer
+            </p>
+
+        </div>
+
+    </div>
+
+</section>
+
+</div>
+
+</main>
+
+</div>
+
+<div class="modal" id="modal">
+
+    <div class="modal-box">
+
+        <div class="modal-title" id="modalTitle">
+            Add Item
+        </div>
+
+        <div class="modal-subtitle" id="modalSubtitle">
+            Add information.
+        </div>
+
+        <div id="modalContent"></div>
+
+        <div class="modal-actions">
+
+            <button class="secondary" id="modalCancel">
+                Cancel
+            </button>
+
+            <button class="primary" id="modalSave">
+                Save
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+
+const GROQ_API_KEY = "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";
+
+const GROQ_ENDPOINT =
+    "https://api.groq.com/openai/v1/chat/completions";
+
+const GROQ_MODEL =
+    "llama-3.3-70b-versatile";
+
+const DB_NAME = "LegacyLensAI";
+
+const DB_VERSION = 1;
+
+let db = null;
+
+let memories = [];
+
+let documents = [];
+
+let videos = [];
+
+let vaultFiles = [];
+
+let passwords = [];
+
+let vaultUnlocked = false;
+
+const views =
+    document.querySelectorAll(".view");
+
+const navButtons =
+    document.querySelectorAll(".nav button");
+
+const pageTitle =
+    document.getElementById("pageTitle");
+
+const pageSubtitle =
+    document.getElementById("pageSubtitle");
+
+const sidebar =
+    document.getElementById("sidebar");
+
+const modal =
+    document.getElementById("modal");
+
+const modalTitle =
+    document.getElementById("modalTitle");
+
+const modalSubtitle =
+    document.getElementById("modalSubtitle");
+
+const modalContent =
+    document.getElementById("modalContent");
+
+const modalCancel =
+    document.getElementById("modalCancel");
+
+const modalSave =
+    document.getElementById("modalSave");
+
+const toast =
+    document.getElementById("toast");
+
+const pageInfo = {
+    overview: [
+        "Overview",
+        "Your private digital life, organized securely."
+    ],
+    ai: [
+        "Legacy Lens AI",
+        "Your intelligent personal assistant."
+    ],
+    memories: [
+        "Memories",
+        "Preserve real photos and memories."
+    ],
+    documents: [
+        "Documents",
+        "Store your real personal documents."
+    ],
+    videos: [
+        "Videos",
+        "Store and watch your real videos."
+    ],
+    vault: [
+        "Secure Vault",
+        "Protected private files."
+    ],
+    passwords: [
+        "Password Vault",
+        "Store important credentials."
+    ],
+    account: [
+        "Account",
+        "Your Legacy Lens AI account."
+    ],
+    security: [
+        "Security",
+        "Review your application security."
+    ],
+    about: [
+        "About",
+        "The people behind Legacy Lens AI."
+    ]
+};
+
+function showToast(
+    message,
+    type = "success"
+) {
+    toast.textContent = message;
+
+    toast.className =
+        "toast show " + type;
+
+    setTimeout(() => {
+        toast.className = "toast";
+    }, 3500);
+}
+
+function navigate(viewName) {
+
+    views.forEach(view => {
+
+        view.classList.toggle(
+            "active",
+            view.id === viewName
+        );
+
+    });
+
+    navButtons.forEach(button => {
+
+        button.classList.toggle(
+            "active",
+            button.dataset.view === viewName
+        );
+
+    });
+
+    if (pageInfo[viewName]) {
+
+        pageTitle.textContent =
+            pageInfo[viewName][0];
+
+        pageSubtitle.textContent =
+            pageInfo[viewName][1];
+
+    }
+
+    sidebar.classList.remove("open");
+
+    window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+    });
+}
+
+navButtons.forEach(button => {
+
+    button.addEventListener(
+        "click",
+        () => {
+            navigate(
+                button.dataset.view
+            );
+        }
+    );
+
+});
+
+document
+    .getElementById("mobileMenu")
+    .addEventListener(
+        "click",
+        () => {
+            sidebar.classList.toggle(
+                "open"
+            );
+        }
+    );
+
+function openModal(
+    title,
+    subtitle,
+    content,
+    saveHandler
+) {
+
+    modalTitle.textContent =
+        title;
+
+    modalSubtitle.textContent =
+        subtitle;
+
+    modalContent.innerHTML =
+        content;
+
+    modal.classList.add("show");
+
+    modalSave.style.display =
+        "block";
+
+    modalSave.onclick =
+        saveHandler;
+}
+
+function closeModal() {
+
+    modal.classList.remove(
+        "show"
+    );
+
+    modalContent.innerHTML = "";
+
+    modalSave.onclick = null;
+}
+
+modalCancel.addEventListener(
+    "click",
+    closeModal
+);
+
+modal.addEventListener(
+    "click",
+    event => {
+
+        if (
+            event.target === modal
+        ) {
+            closeModal();
+        }
+
+    }
+);
+
+function openFilePicker(
+    title,
+    accept,
+    type
+) {
+
+    openModal(
+        title,
+        "Select a real file from your computer.",
+        `
+            <div class="upload-zone">
+
+                <input
+                    id="modalFileInput"
+                    type="file"
+                    accept="${accept}"
+                >
+
+                <label for="modalFileInput">
+                    Choose File
+                </label>
+
+                <p id="selectedFileName">
+                    No file selected
+                </p>
+
+            </div>
+
+            <div class="field">
+
+                <label>
+                    Title
+                </label>
+
+                <input
+                    id="fileTitle"
+                    placeholder="Optional title"
+                >
+
+            </div>
+        `,
+        async () => {
+
+            const input =
+                document.getElementById(
+                    "modalFileInput"
+                );
+
+            const titleInput =
+                document.getElementById(
+                    "fileTitle"
+                );
+
+            if (
+                !input ||
+                !input.files ||
+                !input.files[0]
+            ) {
+
+                showToast(
+                    "Please select a file.",
+                    "error"
+                );
+
+                return;
+            }
+
+            const file =
+                input.files[0];
+
+            const title =
+                titleInput.value.trim() ||
+                file.name;
+
+            const record = {
+                id: crypto.randomUUID(),
+                name: file.name,
+                title,
+                type: file.type,
+                size: file.size,
+                blob: file,
+                createdAt: new Date().toISOString()
+            };
+
+            if (type === "memory") {
+
+                await putItem(
+                    "memories",
+                    record
+                );
+
+                memories.unshift(
+                    record
+                );
+
+                showToast(
+                    "Real memory uploaded."
+                );
+
+            }
+
+            if (type === "document") {
+
+                await putItem(
+                    "documents",
+                    record
+                );
+
+                documents.unshift(
+                    record
+                );
+
+                showToast(
+                    "Real document uploaded."
+                );
+
+            }
+
+            if (type === "video") {
+
+                await putItem(
+                    "videos",
+                    record
+                );
+
+                videos.unshift(
+                    record
+                );
+
+                showToast(
+                    "Real video uploaded."
+                );
+
+            }
+
+            if (type === "vault") {
+
+                await putItem(
+                    "vault",
+                    record
+                );
+
+                vaultFiles.unshift(
+                    record
+                );
+
+                showToast(
+                    "Private file added to vault."
+                );
+
+            }
+
+            closeModal();
+
+            renderAll();
+
+        }
+    );
+
+    setTimeout(() => {
+
+        const input =
+            document.getElementById(
+                "modalFileInput"
+            );
+
+        if (input) {
+
+            input.addEventListener(
+                "change",
+                () => {
+
+                    const file =
+                        input.files[0];
+
+                    document.getElementById(
+                        "selectedFileName"
+                    ).textContent =
+                        file
+                            ? file.name
+                            : "No file selected";
+
+                }
+            );
+
+        }
+
+    }, 0);
+}
+
+function openMemoryCreator() {
+
+    openFilePicker(
+        "Upload Memory",
+        "image/jpeg,image/png,image/webp,image/gif",
+        "memory"
+    );
+
+}
+
+function openDocumentCreator() {
+
+    openFilePicker(
+        "Upload Document",
+        ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv",
+        "document"
+    );
+
+}
+
+function openVideoCreator() {
+
+    openFilePicker(
+        "Upload Video",
+        "video/mp4,video/webm,video/quicktime",
+        "video"
+    );
+
+}
+
+function openVaultUploader() {
+
+    if (!vaultUnlocked) {
+
+        showToast(
+            "Unlock your vault first.",
+            "error"
+        );
+
+        return;
+    }
+
+    openFilePicker(
+        "Upload Private File",
+        "*/*",
+        "vault"
+    );
+
+}
+
+function openPasswordCreator() {
+
+    openModal(
+        "Save Password",
+        "Store a credential locally.",
+        `
+            <div class="field">
+                <label>Website / Service</label>
+                <input id="passwordName">
+            </div>
+
+            <div class="field" style="margin-top:12px;">
+                <label>Username / Email</label>
+                <input id="passwordUsername">
+            </div>
+
+            <div class="field" style="margin-top:12px;">
+                <label>Password</label>
+                <input
+                    id="passwordValue"
+                    type="password"
+                >
+            </div>
+        `,
+        savePassword
+    );
+
+}
+
+async function savePassword() {
+
+    const name =
+        document.getElementById(
+            "passwordName"
+        ).value.trim();
+
+    const username =
+        document.getElementById(
+            "passwordUsername"
+        ).value.trim();
+
+    const password =
+        document.getElementById(
+            "passwordValue"
+        ).value;
+
+    if (
+        !name ||
+        !username ||
+        !password
+    ) {
+
+        showToast(
+            "Complete all password fields.",
+            "error"
+        );
+
+        return;
+    }
+
+    const record = {
+        id: crypto.randomUUID(),
+        name,
+        username,
+        password,
+        createdAt:
+            new Date().toISOString()
+    };
+
+    await putItem(
+        "passwords",
+        record
+    );
+
+    passwords.unshift(
+        record
+    );
+
+    closeModal();
+
+    renderAll();
+
+    showToast(
+        "Password saved."
+    );
+
+}
+
+function openPasswordViewer(
+    item
+) {
+
+    openModal(
+        "Password",
+        item.name,
+        `
+            <div class="field">
+                <label>Username</label>
+                <input value="${escapeAttribute(item.username)}" readonly>
+            </div>
+
+            <div class="field" style="margin-top:12px;">
+                <label>Password</label>
+                <input
+                    id="passwordViewer"
+                    type="password"
+                    value="${escapeAttribute(item.password)}"
+                    readonly
+                >
+            </div>
+
+            <div style="margin-top:12px;display:flex;gap:8px;">
+                <button
+                    class="secondary"
+                    id="showPassword"
+                    type="button"
+                >
+                    Show
+                </button>
+
+                <button
+                    class="secondary"
+                    id="copyPassword"
+                    type="button"
+                >
+                    Copy
+                </button>
+            </div>
+        `,
+        () => closeModal()
+    );
+
+    setTimeout(() => {
+
+        document
+            .getElementById(
+                "showPassword"
+            )
+            ?.addEventListener(
+                "click",
+                () => {
+
+                    const field =
+                        document.getElementById(
+                            "passwordViewer"
+                        );
+
+                    field.type =
+                        field.type === "password"
+                            ? "text"
+                            : "password";
+
+                }
+            );
+
+        document
+            .getElementById(
+                "copyPassword"
+            )
+            ?.addEventListener(
+                "click",
+                async () => {
+
+                    await navigator.clipboard.writeText(
+                        item.password
+                    );
+
+                    showToast(
+                        "Password copied."
+                    );
+
+                }
+            );
+
+    }, 0);
+
+}
+
+function escapeHTML(
+    value
+) {
+
+    return String(
+        value ?? ""
+    ).replace(
+        /[&<>"']/g,
+        character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;"
+        }[character])
+    );
+
+}
+
+function escapeAttribute(
+    value
+) {
+
+    return escapeHTML(
+        value
+    );
+
+}
+
+function formatSize(
+    bytes
+) {
+
+    if (!bytes) {
+        return "0 B";
+    }
+
+    const units = [
+        "B",
+        "KB",
+        "MB",
+        "GB"
+    ];
+
+    const index =
+        Math.floor(
+            Math.log(bytes) /
+            Math.log(1024)
+        );
+
+    return (
+        (bytes /
+            Math.pow(
+                1024,
+                index
+            )
+        ).toFixed(1)
+        + " "
+        + units[index]
+    );
+
+}
+
+function formatDate(
+    date
+) {
+
+    if (!date) {
+        return "";
+    }
+
+    return new Date(
+        date
+    ).toLocaleString();
+
+}
+
+function openDatabase() {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const request =
+                indexedDB.open(
+                    DB_NAME,
+                    DB_VERSION
+                );
+
+            request.onupgradeneeded =
+                event => {
+
+                    const database =
+                        event.target.result;
+
+                    [
+                        "memories",
+                        "documents",
+                        "videos",
+                        "vault",
+                        "passwords",
+                        "settings"
+                    ].forEach(
+                        store => {
+
+                            if (
+                                !database.objectStoreNames.contains(
+                                    store
+                                )
+                            ) {
+
+                                database.createObjectStore(
+                                    store,
+                                    {
+                                        keyPath: "id"
+                                    }
+                                );
+
+                            }
+
+                        }
+                    );
+
+                };
+
+            request.onsuccess =
+                event => {
+
+                    db =
+                        event.target.result;
+
+                    resolve(
+                        db
+                    );
+
+                };
+
+            request.onerror =
+                () => {
+
+                    reject(
+                        request.error
+                    );
+
+                };
+
+        }
+    );
+
+}
+
+function putItem(
+    storeName,
+    item
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const transaction =
+                db.transaction(
+                    storeName,
+                    "readwrite"
+                );
+
+            const store =
+                transaction.objectStore(
+                    storeName
+                );
+
+            const request =
+                store.put(
+                    item
+                );
+
+            request.onsuccess =
+                () => resolve();
+
+            request.onerror =
+                () => reject(
+                    request.error
+                );
+
+        }
+    );
+
+}
+
+function getAllItems(
+    storeName
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const transaction =
+                db.transaction(
+                    storeName,
+                    "readonly"
+                );
+
+            const store =
+                transaction.objectStore(
+                    storeName
+                );
+
+            const request =
+                store.getAll();
+
+            request.onsuccess =
+                () => resolve(
+                    request.result || []
+                );
+
+            request.onerror =
+                () => reject(
+                    request.error
+                );
+
+        }
+    );
+
+}
+
+function deleteItem(
+    storeName,
+    id
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const transaction =
+                db.transaction(
+                    storeName,
+                    "readwrite"
+                );
+
+            const store =
+                transaction.objectStore(
+                    storeName
+                );
+
+            const request =
+                store.delete(
+                    id
+                );
+
+            request.onsuccess =
+                () => resolve();
+
+            request.onerror =
+                () => reject(
+                    request.error
+                );
+
+        }
+    );
+
+}
+
+async function loadLocalData() {
+
+    memories =
+        await getAllItems(
+            "memories"
+        );
+
+    documents =
+        await getAllItems(
+            "documents"
+        );
+
+    videos =
+        await getAllItems(
+            "videos"
+        );
+
+    vaultFiles =
+        await getAllItems(
+            "vault"
+        );
+
+    passwords =
+        await getAllItems(
+            "passwords"
+        );
+
+    renderAll();
+
+}
+
+function createFileURL(
+    blob
+) {
+
+    return URL.createObjectURL(
+        blob
+    );
+
+}
+
+function renderMemories(
+    filter = ""
+) {
+
+    const grid =
+        document.getElementById(
+            "memoryGrid"
+        );
+
+    const query =
+        filter.toLowerCase();
+
+    const items =
+        memories.filter(
+            item =>
+                (
+                    item.name +
+                    " " +
+                    item.title
+                )
+                .toLowerCase()
+                .includes(query)
+        );
+
+    if (!items.length) {
+
+        grid.innerHTML = `
+            <div class="empty">
+                No real memories uploaded yet.
+            </div>
+        `;
+
+        return;
+
+    }
+
+    grid.innerHTML =
+        items.map(
+            item => {
+
+                const url =
+                    createFileURL(
+                        item.blob
+                    );
+
+                return `
+                    <div class="item-card">
+
+                        <img
+                            class="item-preview"
+                            src="${url}"
+                            alt="${escapeAttribute(item.name)}"
+                        >
+
+                        <div class="item-body">
+
+                            <div class="item-title">
+                                ${escapeHTML(item.title)}
+                            </div>
+
+                            <div class="item-desc">
+                                ${escapeHTML(item.name)}
+                            </div>
+
+                            <div class="item-meta">
+                                ${formatSize(item.size)}
+                                ·
+                                ${formatDate(item.createdAt)}
+                            </div>
+
+                            <div class="item-actions">
+
+                                <button
+                                    class="small-button"
+                                    onclick="downloadFile('memories','${item.id}')"
+                                >
+                                    Download
+                                </button>
+
+                                <button
+                                    class="small-button"
+                                    onclick="removeFile('memories','${item.id}')"
+                                >
+                                    Delete
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                `;
+
+            }
+        ).join("");
+
+}
+
+function renderDocuments(
+    filter = ""
+) {
+
+    const grid =
+        document.getElementById(
+            "documentGrid"
+        );
+
+    const query =
+        filter.toLowerCase();
+
+    const items =
+        documents.filter(
+            item =>
+                (
+                    item.name +
+                    " " +
+                    item.title
+                )
+                .toLowerCase()
+                .includes(query)
+        );
+
+    if (!items.length) {
+
+        grid.innerHTML = `
+            <div class="empty">
+                No real documents uploaded yet.
+            </div>
+        `;
+
+        return;
+
+    }
+
+    grid.innerHTML =
+        items.map(
+            item => {
+
+                const isPDF =
+                    item.type ===
+                    "application/pdf";
+
+                const url =
+                    createFileURL(
+                        item.blob
+                    );
+
+                return `
+                    <div class="item-card">
+
+                        ${
+                            isPDF
+                            ? `
+                                <iframe
+                                    class="file-preview"
+                                    src="${url}"
+                                ></iframe>
+                            `
+                            : `
+                                <div
+                                    style="height:210px;display:grid;place-items:center;background:var(--blue-soft);font-size:45px;"
+                                >
+                                    FILE
+                                </div>
+                            `
+                        }
+
+                        <div class="item-body">
+
+                            <div class="item-title">
+                                ${escapeHTML(item.title)}
+                            </div>
+
+                            <div class="item-desc">
+                                ${escapeHTML(item.name)}
+                            </div>
+
+                            <div class="item-meta">
+                                ${escapeHTML(item.type || "Document")}
+                                ·
+                                ${formatSize(item.size)}
+                            </div>
+
+                            <div class="item-actions">
+
+                                <button
+                                    class="small-button"
+                                    onclick="downloadFile('documents','${item.id}')"
+                                >
+                                    Download
+                                </button>
+
+                                <button
+                                    class="small-button"
+                                    onclick="removeFile('documents','${item.id}')"
+                                >
+                                    Delete
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                `;
+
+            }
+        ).join("");
+
+}
+
+function renderVideos(
+    filter = ""
+) {
+
+    const grid =
+        document.getElementById(
+            "videoGrid"
+        );
+
+    const query =
+        filter.toLowerCase();
+
+    const items =
+        videos.filter(
+            item =>
+                (
+                    item.name +
+                    " " +
+                    item.title
+                )
+                .toLowerCase()
+                .includes(query)
+        );
+
+    if (!items.length) {
+
+        grid.innerHTML = `
+            <div class="empty">
+                No real videos uploaded yet.
+            </div>
+        `;
+
+        return;
+
+    }
+
+    grid.innerHTML =
+        items.map(
+            item => {
+
+                const url =
+                    createFileURL(
+                        item.blob
+                    );
+
+                return `
+                    <div class="item-card">
+
+                        <video
+                            class="item-video"
+                            src="${url}"
+                            controls
+                        ></video>
+
+                        <div class="item-body">
+
+                            <div class="item-title">
+                                ${escapeHTML(item.title)}
+                            </div>
+
+                            <div class="item-desc">
+                                ${escapeHTML(item.name)}
+                            </div>
+
+                            <div class="item-meta">
+                                ${formatSize(item.size)}
+                                ·
+                                ${formatDate(item.createdAt)}
+                            </div>
+
+                            <div class="item-actions">
+
+                                <button
+                                    class="small-button"
+                                    onclick="downloadFile('videos','${item.id}')"
+                                >
+                                    Download
+                                </button>
+
+                                <button
+                                    class="small-button"
+                                    onclick="removeFile('videos','${item.id}')"
+                                >
+                                    Delete
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                `;
+
+            }
+        ).join("");
+
+}
+
+function renderVault() {
+
+    const grid =
+        document.getElementById(
+            "vaultGrid"
+        );
+
+    const search =
+        document.getElementById(
+            "vaultSearch"
+        )?.value
+        ?.toLowerCase() || "";
+
+    const items =
+        vaultFiles.filter(
+            item =>
+                item.name
+                    .toLowerCase()
+                    .includes(search)
+        );
+
+    if (!items.length) {
+
+        grid.innerHTML = `
+            <div class="empty">
+                Your secure vault is empty.
+            </div>
+        `;
+
+        return;
+
+    }
+
+    grid.innerHTML =
+        items.map(
+            item => {
+
+                const url =
+                    createFileURL(
+                        item.blob
+                    );
+
+                let preview = `
+                    <div
+                        style="height:210px;display:grid;place-items:center;background:var(--blue-soft);font-size:40px;"
+                    >
+                        PRIVATE
+                    </div>
+                `;
+
+                if (
+                    item.type.startsWith(
+                        "image/"
+                    )
+                ) {
+
+                    preview = `
+                        <img
+                            class="item-preview"
+                            src="${url}"
+                            alt=""
+                        >
+                    `;
+
+                }
+
+                if (
+                    item.type.startsWith(
+                        "video/"
+                    )
+                ) {
+
+                    preview = `
+                        <video
+                            class="item-video"
+                            src="${url}"
+                            controls
+                        ></video>
+                    `;
+
+                }
+
+                if (
+                    item.type ===
+                    "application/pdf"
+                ) {
+
+                    preview = `
+                        <iframe
+                            class="file-preview"
+                            src="${url}"
+                        ></iframe>
+                    `;
+
+                }
+
+                return `
+                    <div class="item-card">
+
+                        ${preview}
+
+                        <div class="item-body">
+
+                            <div class="item-title">
+                                ${escapeHTML(item.name)}
+                            </div>
+
+                            <div class="item-desc">
+                                Private vault file
+                            </div>
+
+                            <div class="item-meta">
+                                ${formatSize(item.size)}
+                                ·
+                                ${formatDate(item.createdAt)}
+                            </div>
+
+                            <div class="item-actions">
+
+                                <button
+                                    class="small-button"
+                                    onclick="downloadFile('vault','${item.id}')"
+                                >
+                                    Download
+                                </button>
+
+                                <button
+                                    class="small-button"
+                                    onclick="removeFile('vault','${item.id}')"
+                                >
+                                    Delete
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                `;
+
+            }
+        ).join("");
+
+}
+
+function renderPasswords(
+    filter = ""
+) {
+
+    const list =
+        document.getElementById(
+            "passwordList"
+        );
+
+    const query =
+        filter.toLowerCase();
+
+    const items =
+        passwords.filter(
+            item =>
+                (
+                    item.name +
+                    " " +
+                    item.username
+                )
+                .toLowerCase()
+                .includes(query)
+        );
+
+    if (!items.length) {
+
+        list.innerHTML = `
+            <div class="empty">
+                No passwords saved.
+            </div>
+        `;
+
+        return;
+
+    }
+
+    list.innerHTML =
+        items.map(
+            item => `
+                <div class="password-item">
+
+                    <div style="font-size:22px;">
+                        P
+                    </div>
+
+                    <div class="password-site">
+
+                        <strong>
+                            ${escapeHTML(item.name)}
+                        </strong>
+
+                        <span>
+                            ${escapeHTML(item.username)}
+                        </span>
+
+                    </div>
+
+                    <div class="password-hidden">
+                        ••••••••
+                    </div>
+
+                    <button
+                        class="small-button"
+                        onclick="openPasswordViewerById('${item.id}')"
+                    >
+                        View
+                    </button>
+
+                    <button
+                        class="small-button"
+                        onclick="removeFile('passwords','${item.id}')"
+                    >
+                        Delete
+                    </button>
+
+                </div>
+            `
+        ).join("");
+
+}
+
+function renderAll() {
+
+    document.getElementById(
+        "memoryCount"
+    ).textContent =
+        memories.length;
+
+    document.getElementById(
+        "documentCount"
+    ).textContent =
+        documents.length;
+
+    document.getElementById(
+        "videoCount"
+    ).textContent =
+        videos.length;
+
+    document.getElementById(
+        "vaultCount"
+    ).textContent =
+        vaultFiles.length;
+
+    renderMemories();
+
+    renderDocuments();
+
+    renderVideos();
+
+    renderPasswords();
+
+    if (vaultUnlocked) {
+        renderVault();
+    }
+
+    renderRecentActivity();
+
+}
+
+function renderRecentActivity() {
+
+    const target =
+        document.getElementById(
+            "recentActivity"
+        );
+
+    const all = [
+        ...memories.map(
+            item => ({
+                type: "Memory",
+                name: item.name,
+                date: item.createdAt
+            })
+        ),
+        ...documents.map(
+            item => ({
+                type: "Document",
+                name: item.name,
+                date: item.createdAt
+            })
+        ),
+        ...videos.map(
+            item => ({
+                type: "Video",
+                name: item.name,
+                date: item.createdAt
+            })
+        )
+    ]
+    .sort(
+        (a,b) =>
+            new Date(b.date) -
+            new Date(a.date)
+    )
+    .slice(0,5);
+
+    if (!all.length) {
+
+        target.innerHTML = `
+            <div class="empty">
+                No activity yet.
+            </div>
+        `;
+
+        return;
+
+    }
+
+    target.innerHTML =
+        all.map(
+            item => `
+                <div
+                    style="padding:12px 0;border-bottom:1px solid var(--border);"
+                >
+                    <strong style="font-size:13px;">
+                        ${escapeHTML(item.type)}
+                    </strong>
+
+                    <span style="color:var(--muted);font-size:12px;">
+                        ${escapeHTML(item.name)}
+                    </span>
+
+                    <div style="color:#9aa4b5;font-size:10px;margin-top:3px;">
+                        ${formatDate(item.date)}
+                    </div>
+                </div>
+            `
+        ).join("");
+
+}
+
+async function removeFile(
+    store,
+    id
+) {
+
+    if (
+        !confirm(
+            "Delete this item?"
+        )
+    ) {
+        return;
+    }
+
+    await deleteItem(
+        store,
+        id
+    );
+
+    if (store === "memories") {
+
+        memories =
+            memories.filter(
+                item =>
+                    item.id !== id
+            );
+
+    }
+
+    if (store === "documents") {
+
+        documents =
+            documents.filter(
+                item =>
+                    item.id !== id
+            );
+
+    }
+
+    if (store === "videos") {
+
+        videos =
+            videos.filter(
+                item =>
+                    item.id !== id
+            );
+
+    }
+
+    if (store === "vault") {
+
+        vaultFiles =
+            vaultFiles.filter(
+                item =>
+                    item.id !== id
+            );
+
+    }
+
+    if (store === "passwords") {
+
+        passwords =
+            passwords.filter(
+                item =>
+                    item.id !== id
+            );
+
+    }
+
+    renderAll();
+
+    showToast(
+        "Item deleted."
+    );
+
+}
+
+async function downloadFile(
+    store,
+    id
+) {
+
+    const items =
+        await getAllItems(
+            store
+        );
+
+    const item =
+        items.find(
+            x => x.id === id
+        );
+
+    if (!item) return;
+
+    const url =
+        URL.createObjectURL(
+            item.blob
+        );
+
+    const anchor =
+        document.createElement(
+            "a"
+        );
+
+    anchor.href =
+        url;
+
+    anchor.download =
+        item.name;
+
+    document.body.appendChild(
+        anchor
+    );
+
+    anchor.click();
+
+    anchor.remove();
+
+    setTimeout(
+        () =>
+            URL.revokeObjectURL(url),
+        1000
+    );
+
+}
+
+function getVaultPIN() {
+
+    return localStorage.getItem(
+        "legacyLensVaultPIN"
+    );
+
+}
+
+async function setupVault() {
+
+    let pin =
+        getVaultPIN();
+
+    if (!pin) {
+
+        pin =
+            prompt(
+                "Create a vault PIN. This PIN cannot be reset."
+            );
+
+        if (!pin) {
+            return;
+        }
+
+        if (
+            pin.length < 4
+        ) {
+
+            showToast(
+                "PIN must contain at least 4 characters.",
+                "error"
+            );
+
+            return;
+        }
+
+        localStorage.setItem(
+            "legacyLensVaultPIN",
+            await hashText(pin)
+        );
+
+        showToast(
+            "Vault PIN created."
+        );
+
+    }
+
+    document.getElementById(
+        "vaultPinInput"
+    ).focus();
+
+}
+
+async function hashText(
+    text
+) {
+
+    const data =
+        new TextEncoder().encode(
+            text
+        );
+
+    const hash =
+        await crypto.subtle.digest(
+            "SHA-256",
+            data
+        );
+
+    return Array.from(
+        new Uint8Array(hash)
+    )
+    .map(
+        byte =>
+            byte
+                .toString(16)
+                .padStart(2,"0")
+    )
+    .join("");
+
+}
+
+async function unlockVault() {
+
+    let stored =
+        getVaultPIN();
+
+    if (!stored) {
+
+        await setupVault();
+
+        stored =
+            getVaultPIN();
+
+        if (!stored) return;
+
+    }
+
+    const input =
+        document.getElementById(
+            "vaultPinInput"
+        ).value;
+
+    const hash =
+        await hashText(
+            input
+        );
+
+    if (
+        hash !== stored
+    ) {
+
+        showToast(
+            "Incorrect vault PIN.",
+            "error"
+        );
+
+        return;
+
+    }
+
+    vaultUnlocked =
+        true;
+
+    document.getElementById(
+        "vaultLocked"
+    ).style.display =
+        "none";
+
+    document.getElementById(
+        "vaultUnlocked"
+    ).style.display =
+        "block";
+
+    renderVault();
+
+    showToast(
+        "Vault unlocked."
+    );
+
+}
+
+function lockVault() {
+
+    vaultUnlocked =
+        false;
+
+    document.getElementById(
+        "vaultLocked"
+    ).style.display =
+        "block";
+
+    document.getElementById(
+        "vaultUnlocked"
+    ).style.display =
+        "none";
+
+}
+
+async function sendAIMessage() {
+
+    const input =
+        document.getElementById(
+            "aiInput"
+        );
+
+    const chat =
+        document.getElementById(
+            "chat"
+        );
+
+    const text =
+        input.value.trim();
+
+    if (!text) return;
+
+    const user =
+        document.createElement(
+            "div"
+        );
+
+    user.className =
+        "message user";
+
+    user.textContent =
+        text;
+
+    chat.appendChild(
+        user
+    );
+
+    input.value = "";
+
+    const thinking =
+        document.createElement(
+            "div"
+        );
+
+    thinking.className =
+        "message ai";
+
+    thinking.textContent =
+        "Legacy Lens AI is thinking...";
+
+    chat.appendChild(
+        thinking
+    );
+
+    chat.scrollTop =
+        chat.scrollHeight;
+
+    if (
+        !GROQ_API_KEY ||
+        GROQ_API_KEY ===
+            "PASTE_YOUR_GROQ_API_KEY_HERE"
+    ) {
+
+        thinking.textContent =
+            "Please add your Groq API key inside dashboard.html.";
+
+        return;
+
+    }
+
+    try {
+
+        const response =
+            await fetch(
+                GROQ_ENDPOINT,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+
+                        "Authorization":
+                            "Bearer " +
+                            GROQ_API_KEY
+                    },
+
+                    body: JSON.stringify({
+                        model:
+                            GROQ_MODEL,
+
+                        messages: [
+                            {
+                                role:
+                                    "system",
+
+                                content:
+                                    "You are Legacy Lens AI, the intelligent personal assistant inside the Legacy Lens AI platform. Legacy Lens AI is a private digital workspace for memories, real files, videos, documents, passwords and a secure local vault. Web Me is the developer and creator of Legacy Lens AI. Temilolouwa Victor is the CEO. If asked who created or developed Legacy Lens AI, explain that Web Me is the developer/creator. If asked who the CEO is, say Temilolouwa Victor. Explain the platform accurately. Never reveal API keys, credentials or secrets."
+                            },
+
+                            {
+                                role:
+                                    "user",
+
+                                content:
+                                    text
+                            }
+                        ],
+
+                        temperature:
+                            0.7,
+
+                        max_tokens:
+                            2048
+                    })
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(
+                data?.error?.message ||
+                "Groq request failed."
+            );
+
+        }
+
+        thinking.textContent =
+            data
+                ?.choices
+                ?.[0]
+                ?.message
+                ?.content ||
+            "The AI returned no response.";
+
+        document.getElementById(
+            "aiStatus"
+        ).textContent =
+            "● Connected";
+
+        document.getElementById(
+            "aiStatus"
+        ).className =
+            "status online";
+
+    } catch (error) {
+
+        console.error(
+            error
+        );
+
+        thinking.textContent =
+            "AI request failed: " +
+            error.message;
+
+        document.getElementById(
+            "aiStatus"
+        ).textContent =
+            "● Error";
+
+        document.getElementById(
+            "aiStatus"
+        ).className =
+            "status offline";
+
+    }
+
+    chat.scrollTop =
+        chat.scrollHeight;
+
+}
+
+document
+    .getElementById(
+        "sendAI"
+    )
+    .addEventListener(
+        "click",
+        sendAIMessage
+    );
+
+document
+    .getElementById(
+        "aiInput"
+    )
+    .addEventListener(
+        "keydown",
+        event => {
+
+            if (
+                event.key === "Enter" &&
+                !event.shiftKey
+            ) {
+
+                event.preventDefault();
+
+                sendAIMessage();
+
+            }
+
+        }
+    );
+
+document
+    .getElementById(
+        "clearChat"
+    )
+    .addEventListener(
+        "click",
+        () => {
+
+            document.getElementById(
+                "chat"
+            ).innerHTML = `
+                <div class="message ai">
+                    Conversation cleared. How can I help you?
+                </div>
+            `;
+
+        }
+    );
+
+document
+    .getElementById(
+        "newMemoryButton"
+    )
+    .addEventListener(
+        "click",
+        openMemoryCreator
+    );
+
+document
+    .getElementById(
+        "newDocumentButton"
+    )
+    .addEventListener(
+        "click",
+        openDocumentCreator
+    );
+
+document
+    .getElementById(
+        "newVideoButton"
+    )
+    .addEventListener(
+        "click",
+        openVideoCreator
+    );
+
+document
+    .getElementById(
+        "vaultUploadButton"
+    )
+    .addEventListener(
+        "click",
+        openVaultUploader
+    );
+
+document
+    .getElementById(
+        "newPasswordButton"
+    )
+    .addEventListener(
+        "click",
+        openPasswordCreator
+    );
+
+document
+    .getElementById(
+        "unlockVault"
+    )
+    .addEventListener(
+        "click",
+        unlockVault
+    );
+
+document
+    .getElementById(
+        "lockVault"
+    )
+    .addEventListener(
+        "click",
+        lockVault
+    );
+
+document
+    .getElementById(
+        "vaultSearch"
+    )
+    .addEventListener(
+        "input",
+        () => renderVault()
+    );
+
+document
+    .getElementById(
+        "memorySearch"
+    )
+    .addEventListener(
+        "input",
+        event =>
+            renderMemories(
+                event.target.value
+            )
+    );
+
+document
+    .getElementById(
+        "documentSearch"
+    )
+    .addEventListener(
+        "input",
+        event =>
+            renderDocuments(
+                event.target.value
+            )
+    );
+
+document
+    .getElementById(
+        "videoSearch"
+    )
+    .addEventListener(
+        "input",
+        event =>
+            renderVideos(
+                event.target.value
+            )
+    );
+
+document
+    .getElementById(
+        "passwordSearch"
+    )
+    .addEventListener(
+        "input",
+        event =>
+            renderPasswords(
+                event.target.value
+            )
+    );
+
+document
+    .querySelectorAll(
+        "[data-action]"
+    )
+    .forEach(
+        button => {
+
+            button.addEventListener(
+                "click",
+                () => {
+
+                    const action =
+                        button.dataset.action;
+
+                    if (
+                        action ===
+                        "memory"
+                    ) {
+
+                        navigate(
+                            "memories"
+                        );
+
+                        openMemoryCreator();
+
+                    }
+
+                    if (
+                        action ===
+                        "document"
+                    ) {
+
+                        navigate(
+                            "documents"
+                        );
+
+                        openDocumentCreator();
+
+                    }
+
+                    if (
+                        action ===
+                        "video"
+                    ) {
+
+                        navigate(
+                            "videos"
+                        );
+
+                        openVideoCreator();
+
+                    }
+
+                    if (
+                        action ===
+                        "vault"
+                    ) {
+
+                        navigate(
+                            "vault"
+                        );
+
+                    }
+
+                    if (
+                        action ===
+                        "ai"
+                    ) {
+
+                        navigate(
+                            "ai"
+                        );
+
+                    }
+
+                }
+            );
+
+        }
+    );
+
+document
+    .getElementById(
+        "logoutButton"
+    )
+    .addEventListener(
+        "click",
+        () => {
+
+            sessionStorage.clear();
+
+            localStorage.removeItem(
+                "legacyLensSession"
+            );
+
+            window.location.href =
+                "index.html";
+
+        }
+    );
+
+document
+    .getElementById(
+        "searchButton"
+    )
+    .addEventListener(
+        "click",
+        () => {
+
+            navigate(
+                "memories"
+            );
+
+            document
+                .getElementById(
+                    "memorySearch"
+                )
+                .focus();
+
+        }
+    );
+
+document
+    .getElementById(
+        "notificationsButton"
+    )
+    .addEventListener(
+        "click",
+        () => {
+
+            showToast(
+                "No new notifications."
+            );
+
+        }
+    );
+
+async function openPasswordViewerById(
+    id
+) {
+
+    const item =
+        passwords.find(
+            password =>
+                password.id === id
+        );
+
+    if (item) {
+
+        openPasswordViewer(
+            item
+        );
+
+    }
+
+}
+
+async function initialize() {
+
+    try {
+
+        await openDatabase();
+
+        await loadLocalData();
+
+        await setupVault();
+
+        if (
+            GROQ_API_KEY &&
+            GROQ_API_KEY !==
+                "PASTE_YOUR_GROQ_API_KEY_HERE"
+        ) {
+
+            document.getElementById(
+                "aiStatus"
+            ).textContent =
+                "● Ready";
+
+            document.getElementById(
+                "aiStatus"
+            ).className =
+                "status online";
+
+        } else {
+
+            document.getElementById(
+                "aiStatus"
+            ).textContent =
+                "● API key required";
+
+            document.getElementById(
+                "aiStatus"
+            ).className =
+                "status offline";
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            error
+        );
+
+        showToast(
+            "Unable to initialize local storage.",
+            "error"
+        );
+
+    }
+
+}
+
+initialize();
+
+</script>
+
+</body>
+</html>

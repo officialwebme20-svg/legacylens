@@ -1,0 +1,2565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#05070d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <title>Legacy Lens AI — Face Security</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #05070d;
+            --panel: rgba(13, 17, 28, 0.96);
+            --border: rgba(255, 255, 255, 0.09);
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --accent: #4f8cff;
+            --accent2: #7c5cff;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        html,
+        body {
+            width: 100%;
+            min-height: 100%;
+            background:
+                radial-gradient(
+                    circle at 50% 0%,
+                    rgba(79, 140, 255, 0.15),
+                    transparent 38%
+                ),
+                var(--bg);
+
+            color: var(--text);
+
+            font-family:
+                Inter,
+                ui-sans-serif,
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        button,
+        input {
+            font: inherit;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .page {
+            min-height: 100vh;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            padding: 25px 15px;
+        }
+
+        .security-card {
+            width: min(100%, 520px);
+
+            background: var(--panel);
+
+            border: 1px solid var(--border);
+
+            border-radius: 28px;
+
+            padding: 25px;
+
+            box-shadow:
+                0 30px 80px rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+            backdrop-filter: blur(25px);
+        }
+
+        .brand {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .brand-icon {
+            width: 58px;
+            height: 58px;
+
+            margin: 0 auto 13px;
+
+            display: grid;
+            place-items: center;
+
+            border-radius: 18px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    var(--accent),
+                    var(--accent2)
+                );
+
+            box-shadow:
+                0 15px 35px rgba(79, 140, 255, 0.25);
+        }
+
+        .brand-icon svg {
+            width: 30px;
+            height: 30px;
+            color: white;
+        }
+
+        .brand h1 {
+            font-size: 25px;
+            font-weight: 750;
+            letter-spacing: -0.6px;
+        }
+
+        .brand p {
+            color: var(--muted);
+            font-size: 14px;
+            margin-top: 6px;
+        }
+
+        .mode-switch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+
+            gap: 5px;
+
+            padding: 5px;
+
+            margin-bottom: 18px;
+
+            border-radius: 15px;
+
+            background:
+                rgba(255, 255, 255, 0.045);
+        }
+
+        .mode-button {
+            border: 0;
+
+            background: transparent;
+
+            color: var(--muted);
+
+            padding: 12px;
+
+            border-radius: 11px;
+
+            font-size: 14px;
+
+            font-weight: 650;
+        }
+
+        .mode-button.active {
+            color: white;
+
+            background:
+                rgba(255, 255, 255, 0.09);
+        }
+
+        .email-section {
+            margin-bottom: 16px;
+        }
+
+        .email-section label {
+            display: block;
+
+            color: #cbd5e1;
+
+            font-size: 13px;
+
+            font-weight: 600;
+
+            margin-bottom: 8px;
+        }
+
+        .input {
+            width: 100%;
+            height: 48px;
+
+            padding: 0 15px;
+
+            border-radius: 13px;
+
+            border: 1px solid var(--border);
+
+            outline: none;
+
+            color: white;
+
+            background:
+                rgba(255, 255, 255, 0.045);
+        }
+
+        .input:focus {
+            border-color:
+                rgba(79, 140, 255, 0.7);
+
+            box-shadow:
+                0 0 0 4px
+                rgba(79, 140, 255, 0.08);
+        }
+
+        .camera-area {
+            position: relative;
+
+            width: 100%;
+
+            aspect-ratio: 4 / 4.8;
+
+            overflow: hidden;
+
+            border-radius: 24px;
+
+            background: #000;
+
+            border: 1px solid
+                rgba(255, 255, 255, 0.08);
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+
+            display: block;
+
+            object-fit: cover;
+
+            transform: scaleX(-1);
+
+            background: #000;
+        }
+
+        .camera-overlay {
+            position: absolute;
+
+            inset: 0;
+
+            pointer-events: none;
+        }
+
+        .scan-area {
+            position: absolute;
+
+            left: 50%;
+            top: 50%;
+
+            width: 68%;
+
+            aspect-ratio: 0.82;
+
+            transform:
+                translate(-50%, -50%);
+
+            border-radius:
+                45% 45% 42% 42%;
+
+            border:
+                2px solid
+                rgba(255, 255, 255, 0.75);
+
+            box-shadow:
+                0 0 0 999px
+                rgba(0, 0, 0, 0.23),
+
+                inset 0 0 40px
+                rgba(79, 140, 255, 0.06);
+
+            transition:
+                border-color 0.2s ease,
+                box-shadow 0.2s ease;
+        }
+
+        .scan-area::before,
+        .scan-area::after {
+            content: "";
+
+            position: absolute;
+
+            width: 34px;
+            height: 34px;
+
+            border-color: white;
+
+            border-style: solid;
+        }
+
+        .scan-area::before {
+            top: -2px;
+            left: -2px;
+
+            border-width:
+                3px 0 0 3px;
+
+            border-radius:
+                16px 0 0 0;
+        }
+
+        .scan-area::after {
+            right: -2px;
+            bottom: -2px;
+
+            border-width:
+                0 3px 3px 0;
+
+            border-radius:
+                0 0 16px 0;
+        }
+
+        .scan-line {
+            position: absolute;
+
+            left: 8%;
+            right: 8%;
+
+            height: 2px;
+
+            top: 8%;
+
+            border-radius: 100px;
+
+            background:
+                linear-gradient(
+                    90deg,
+                    transparent,
+                    var(--accent),
+                    white,
+                    var(--accent),
+                    transparent
+                );
+
+            box-shadow:
+                0 0 18px
+                rgba(79, 140, 255, 0.9);
+
+            opacity: 0;
+        }
+
+        .scanning .scan-line {
+            opacity: 1;
+
+            animation:
+                scan 1.5s ease-in-out infinite;
+        }
+
+        @keyframes scan {
+            0% {
+                top: 8%;
+            }
+
+            50% {
+                top: 92%;
+            }
+
+            100% {
+                top: 8%;
+            }
+        }
+
+        .camera-status {
+            position: absolute;
+
+            left: 50%;
+            bottom: 18px;
+
+            transform:
+                translateX(-50%);
+
+            width: calc(100% - 36px);
+
+            padding: 10px 14px;
+
+            border-radius: 12px;
+
+            text-align: center;
+
+            color: white;
+
+            background:
+                rgba(0, 0, 0, 0.6);
+
+            backdrop-filter:
+                blur(12px);
+
+            font-size: 13px;
+
+            font-weight: 600;
+        }
+
+        .status-dot {
+            display: inline-block;
+
+            width: 8px;
+            height: 8px;
+
+            margin-right: 7px;
+
+            border-radius: 50%;
+
+            vertical-align: middle;
+
+            background:
+                var(--warning);
+        }
+
+        .status-dot.ready {
+            background:
+                var(--accent);
+
+            box-shadow:
+                0 0 10px
+                var(--accent);
+        }
+
+        .status-dot.success {
+            background:
+                var(--success);
+
+            box-shadow:
+                0 0 12px
+                var(--success);
+        }
+
+        .status-dot.error {
+            background:
+                var(--danger);
+        }
+
+        .progress {
+            width: 100%;
+
+            height: 5px;
+
+            margin-top: 14px;
+
+            overflow: hidden;
+
+            border-radius: 100px;
+
+            background:
+                rgba(255, 255, 255, 0.08);
+        }
+
+        .progress-bar {
+            width: 0%;
+
+            height: 100%;
+
+            background:
+                linear-gradient(
+                    90deg,
+                    var(--accent),
+                    var(--accent2)
+                );
+
+            transition:
+                width 0.25s ease;
+        }
+
+        .capture-count {
+            margin-top: 10px;
+
+            text-align: center;
+
+            color: var(--muted);
+
+            font-size: 12px;
+
+            min-height: 18px;
+        }
+
+        .action {
+            position: relative;
+
+            width: 100%;
+
+            height: 52px;
+
+            margin-top: 15px;
+
+            border: 0;
+
+            border-radius: 15px;
+
+            color: white;
+
+            font-size: 15px;
+
+            font-weight: 700;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    var(--accent),
+                    var(--accent2)
+                );
+
+            box-shadow:
+                0 14px 30px
+                rgba(79, 140, 255, 0.2);
+
+            transition:
+                transform 0.2s ease,
+                opacity 0.2s ease;
+        }
+
+        .action:hover:not(:disabled) {
+            transform:
+                translateY(-1px);
+        }
+
+        .action:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .secondary {
+            width: 100%;
+
+            height: 48px;
+
+            margin-top: 10px;
+
+            border-radius: 14px;
+
+            border:
+                1px solid var(--border);
+
+            background:
+                rgba(255, 255, 255, 0.045);
+
+            color: #cbd5e1;
+
+            font-weight: 650;
+        }
+
+        .message {
+            display: none;
+
+            margin-top: 14px;
+
+            padding: 12px 14px;
+
+            border-radius: 13px;
+
+            font-size: 13px;
+
+            line-height: 1.45;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .message.success {
+            color: #86efac;
+
+            background:
+                rgba(34, 197, 94, 0.1);
+
+            border:
+                1px solid
+                rgba(34, 197, 94, 0.25);
+        }
+
+        .message.error {
+            color: #fca5a5;
+
+            background:
+                rgba(239, 68, 68, 0.1);
+
+            border:
+                1px solid
+                rgba(239, 68, 68, 0.25);
+        }
+
+        .message.info {
+            color: #93c5fd;
+
+            background:
+                rgba(79, 140, 255, 0.1);
+
+            border:
+                1px solid
+                rgba(79, 140, 255, 0.25);
+        }
+
+        .face-found .scan-area {
+            border-color:
+                var(--success);
+
+            box-shadow:
+                0 0 0 999px
+                rgba(0, 0, 0, 0.18),
+
+                0 0 30px
+                rgba(34, 197, 94, 0.2);
+        }
+
+        .success-state .scan-area {
+            border-color:
+                var(--success);
+
+            box-shadow:
+                0 0 0 999px
+                rgba(0, 0, 0, 0.12),
+
+                0 0 40px
+                rgba(34, 197, 94, 0.3);
+        }
+
+        .loading {
+            color: transparent !important;
+        }
+
+        .loading::after {
+            content: "";
+
+            position: absolute;
+
+            left: 50%;
+            top: 50%;
+
+            width: 19px;
+            height: 19px;
+
+            margin-left: -9.5px;
+            margin-top: -9.5px;
+
+            border:
+                2px solid
+                rgba(255, 255, 255, 0.35);
+
+            border-top-color: white;
+
+            border-radius: 50%;
+
+            animation:
+                spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .footer {
+            margin-top: 18px;
+
+            text-align: center;
+
+            color: #64748b;
+
+            font-size: 11px;
+        }
+
+        @media (max-width: 520px) {
+
+            .page {
+                padding: 12px;
+            }
+
+            .security-card {
+                padding: 18px;
+
+                border-radius: 24px;
+            }
+
+            .camera-area {
+                aspect-ratio: 4 / 5;
+            }
+
+            .scan-area {
+                width: 72%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="page">
+
+    <main class="security-card">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <path d="M9 3H5a2 2 0 0 0-2 2v4"/>
+                    <path d="M15 3h4a2 2 0 0 1 2 2v4"/>
+                    <path d="M21 15v4a2 2 0 0 1-2 2h-4"/>
+                    <path d="M3 15v4a2 2 0 0 0 2 2h4"/>
+
+                    <circle
+                        cx="12"
+                        cy="11"
+                        r="3"
+                    />
+
+                    <path
+                        d="M7.5 19c.7-2.1 2.2-3.2 4.5-3.2s3.8 1.1 4.5 3.2"
+                    />
+                </svg>
+
+            </div>
+
+            <h1>Face Security</h1>
+
+            <p>
+                Secure your Legacy Lens AI account
+            </p>
+
+        </div>
+
+
+        <div class="mode-switch">
+
+            <button
+                type="button"
+                class="mode-button active"
+                id="loginMode"
+            >
+                Face Login
+            </button>
+
+            <button
+                type="button"
+                class="mode-button"
+                id="registerMode"
+            >
+                Register Face
+            </button>
+
+        </div>
+
+
+        <div class="email-section">
+
+            <label for="email">
+                Account email
+            </label>
+
+            <input
+                id="email"
+                class="input"
+                type="email"
+                autocomplete="email"
+                placeholder="Enter your email"
+            >
+
+        </div>
+
+
+        <div
+            class="camera-area"
+            id="cameraArea"
+        >
+
+            <video
+                id="video"
+                autoplay
+                muted
+                playsinline
+            ></video>
+
+            <div class="camera-overlay">
+
+                <div class="scan-area">
+
+                    <div class="scan-line"></div>
+
+                </div>
+
+                <div
+                    class="camera-status"
+                    id="cameraStatus"
+                >
+                    <span class="status-dot"></span>
+                    Starting camera...
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="progress">
+
+            <div
+                class="progress-bar"
+                id="progressBar"
+            ></div>
+
+        </div>
+
+
+        <div
+            class="capture-count"
+            id="captureCount"
+        >
+            Loading face recognition...
+        </div>
+
+
+        <button
+            type="button"
+            class="action"
+            id="actionButton"
+            disabled
+        >
+            Start Face Login
+        </button>
+
+
+        <button
+            type="button"
+            class="secondary"
+            id="cameraButton"
+        >
+            Restart Camera
+        </button>
+
+
+        <div
+            class="message"
+            id="message"
+        ></div>
+
+
+        <div class="footer">
+            Camera access is used only for face verification.
+        </div>
+
+    </main>
+
+</div>
+
+
+<!-- FACE-API.JS -->
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+
+<script>
+
+"use strict";
+
+
+/* ============================================================
+   CONFIGURATION
+   ============================================================ */
+
+
+/*
+    THIS IS YOUR LIVE RENDER FACE SECURITY SERVER.
+*/
+
+const FACE_SECURITY_API =
+    "https://legacy-ctb7.onrender.com";
+
+
+/*
+    FACE-API MODEL FILES.
+
+    We use SSD MobileNet because it is more reliable
+    than the tiny detector for normal webcam images.
+*/
+
+const MODEL_URL =
+    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights";
+
+
+/* ============================================================
+   DOM
+   ============================================================ */
+
+const video =
+    document.getElementById("video");
+
+const cameraArea =
+    document.getElementById("cameraArea");
+
+const cameraStatus =
+    document.getElementById("cameraStatus");
+
+const actionButton =
+    document.getElementById("actionButton");
+
+const cameraButton =
+    document.getElementById("cameraButton");
+
+const emailInput =
+    document.getElementById("email");
+
+const message =
+    document.getElementById("message");
+
+const progressBar =
+    document.getElementById("progressBar");
+
+const captureCount =
+    document.getElementById("captureCount");
+
+const loginMode =
+    document.getElementById("loginMode");
+
+const registerMode =
+    document.getElementById("registerMode");
+
+
+/* ============================================================
+   STATE
+   ============================================================ */
+
+let stream = null;
+
+let modelsLoaded = false;
+
+let cameraReady = false;
+
+let faceDetected = false;
+
+let currentMode = "login";
+
+let busy = false;
+
+let detectionTimer = null;
+
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+
+function sleep(ms) {
+
+    return new Promise(
+        resolve => setTimeout(resolve, ms)
+    );
+
+}
+
+
+function setStatus(
+    text,
+    type = "normal"
+) {
+
+    let className =
+        "status-dot";
+
+    if (type === "ready") {
+        className += " ready";
+    }
+
+    if (type === "success") {
+        className += " success";
+    }
+
+    if (type === "error") {
+        className += " error";
+    }
+
+    cameraStatus.innerHTML =
+        `<span class="${className}"></span>${text}`;
+}
+
+
+function showMessage(
+    text,
+    type = "info"
+) {
+
+    message.textContent =
+        text;
+
+    message.className =
+        `message show ${type}`;
+}
+
+
+function hideMessage() {
+
+    message.textContent = "";
+
+    message.className = "message";
+}
+
+
+function setProgress(value) {
+
+    const percentage =
+        Math.max(
+            0,
+            Math.min(100, value)
+        );
+
+    progressBar.style.width =
+        `${percentage}%`;
+}
+
+
+function setLoading(loading) {
+
+    busy = loading;
+
+    if (loading) {
+
+        actionButton.disabled = true;
+
+        actionButton.classList.add(
+            "loading"
+        );
+
+    } else {
+
+        actionButton.classList.remove(
+            "loading"
+        );
+
+        updateButton();
+    }
+}
+
+
+/* ============================================================
+   BUTTON
+   ============================================================ */
+
+function updateButton() {
+
+    if (busy) {
+        return;
+    }
+
+    if (!cameraReady) {
+
+        actionButton.disabled = true;
+
+        return;
+    }
+
+    if (!modelsLoaded) {
+
+        actionButton.disabled = true;
+
+        return;
+    }
+
+    if (currentMode === "login") {
+
+        actionButton.textContent =
+            "Start Face Login";
+
+    } else {
+
+        actionButton.textContent =
+            "Register My Face";
+    }
+
+    actionButton.disabled =
+        !emailInput.value.trim();
+}
+
+
+/* ============================================================
+   LOAD MODELS
+   ============================================================ */
+
+async function loadModels() {
+
+    if (modelsLoaded) {
+        return;
+    }
+
+    setStatus(
+        "Loading face recognition..."
+    );
+
+    captureCount.textContent =
+        "Downloading face recognition models...";
+
+    try {
+
+        /*
+            SSD MobileNet
+        */
+
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(
+            MODEL_URL
+        );
+
+        /*
+            Face landmarks
+        */
+
+        await faceapi.nets.faceLandmark68Net.loadFromUri(
+            MODEL_URL
+        );
+
+        /*
+            Face recognition
+        */
+
+        await faceapi.nets.faceRecognitionNet.loadFromUri(
+            MODEL_URL
+        );
+
+        modelsLoaded = true;
+
+        setStatus(
+            "Face recognition ready",
+            "ready"
+        );
+
+        captureCount.textContent =
+            "Starting camera...";
+
+        updateButton();
+
+    } catch (error) {
+
+        console.error(
+            "MODEL LOADING ERROR:",
+            error
+        );
+
+        modelsLoaded = false;
+
+        setStatus(
+            "Face recognition could not start",
+            "error"
+        );
+
+        captureCount.textContent =
+            "Model loading failed";
+
+        showMessage(
+            "Face recognition models could not be loaded. Check your internet connection and refresh the page.",
+            "error"
+        );
+    }
+}
+
+
+/* ============================================================
+   CAMERA
+   ============================================================ */
+
+async function startCamera() {
+    stopCamera();
+
+    hideMessage();
+
+    cameraReady = false;
+    faceDetected = false;
+
+    cameraArea.classList.remove(
+        "face-found",
+        "success-state",
+        "scanning"
+    );
+
+    setProgress(0);
+
+    setStatus("Checking camera...");
+
+    captureCount.textContent =
+        "Requesting camera permission...";
+
+    try {
+        if (!window.isSecureContext) {
+            throw new Error(
+                "Camera requires HTTPS. Open the frontend using your HTTPS Render URL."
+            );
+        }
+
+        if (
+            !navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia
+        ) {
+            throw new Error(
+                "Your browser does not support camera access through getUserMedia."
+            );
+        }
+
+        console.log("Requesting camera...");
+
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: "user",
+                width: {
+                    ideal: 1280
+                },
+                height: {
+                    ideal: 720
+                },
+                frameRate: {
+                    ideal: 30,
+                    max: 30
+                }
+            },
+            audio: false
+        });
+
+        console.log("Camera stream received:", stream);
+
+        const videoTrack =
+            stream.getVideoTracks()[0];
+
+        if (!videoTrack) {
+            throw new Error(
+                "The browser returned a camera stream without a video track."
+            );
+        }
+
+        console.log(
+            "Camera:",
+            videoTrack.label
+        );
+
+        video.srcObject = stream;
+
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(
+                    new Error(
+                        "Camera started but the video element did not become ready."
+                    )
+                );
+            }, 10000);
+
+            if (video.readyState >= 2) {
+                clearTimeout(timeout);
+                resolve();
+                return;
+            }
+
+            video.onloadedmetadata = () => {
+                clearTimeout(timeout);
+                resolve();
+            };
+
+            video.onerror = () => {
+                clearTimeout(timeout);
+                reject(
+                    new Error(
+                        "The browser could not display the camera video."
+                    )
+                );
+            };
+        });
+
+        await video.play();
+
+        cameraReady = true;
+
+        setStatus(
+            "Camera ready — position your face",
+            "ready"
+        );
+
+        captureCount.textContent =
+            "Face detection starting...";
+
+        updateButton();
+
+        beginFaceDetection();
+
+    } catch (error) {
+        console.error(
+            "======================================"
+        );
+
+        console.error(
+            "CAMERA START ERROR"
+        );
+
+        console.error(
+            "Name:",
+            error?.name
+        );
+
+        console.error(
+            "Message:",
+            error?.message
+        );
+
+        console.error(
+            "Full error:",
+            error
+        );
+
+        console.error(
+            "======================================"
+        );
+
+        cameraReady = false;
+
+        if (stream) {
+            stream
+                .getTracks()
+                .forEach(track => track.stop());
+
+            stream = null;
+        }
+
+        video.srcObject = null;
+
+        let messageText =
+            "Camera could not start.";
+
+        switch (error?.name) {
+
+            case "NotAllowedError":
+                messageText =
+                    "Camera permission was denied. Allow camera access for this website in Chrome and then press Restart Camera.";
+                break;
+
+            case "PermissionDeniedError":
+                messageText =
+                    "Camera permission was denied. Allow camera access for this website.";
+                break;
+
+            case "NotFoundError":
+                messageText =
+                    "No camera was found on this computer. Connect a webcam and try again.";
+                break;
+
+            case "NotReadableError":
+                messageText =
+                    "Your camera is already being used by another application. Close Zoom, Teams, OBS, Camera, WhatsApp, or another application using the webcam.";
+                break;
+
+            case "OverconstrainedError":
+                messageText =
+                    "The requested camera settings are not supported by your webcam.";
+                break;
+
+            case "SecurityError":
+                messageText =
+                    "The browser blocked camera access for security reasons. Make sure you are using HTTPS.";
+                break;
+
+            case "AbortError":
+                messageText =
+                    "Camera startup was interrupted. Press Restart Camera and try again.";
+                break;
+
+            default:
+                messageText =
+                    `${error?.message || "Unknown camera error."}`;
+        }
+
+        setStatus(
+            "Camera unavailable",
+            "error"
+        );
+
+        captureCount.textContent =
+            "Camera could not start";
+
+        showMessage(
+            messageText,
+            "error"
+        );
+
+        updateButton();
+    }
+}
+
+
+function stopCamera() {
+
+    if (detectionTimer) {
+
+        clearInterval(
+            detectionTimer
+        );
+
+        detectionTimer = null;
+    }
+
+    if (stream) {
+
+        stream
+            .getTracks()
+            .forEach(
+                track => track.stop()
+            );
+
+        stream = null;
+    }
+
+    video.srcObject = null;
+}
+
+
+/* ============================================================
+   FACE DETECTION
+   ============================================================ */
+
+function beginFaceDetection() {
+
+    if (detectionTimer) {
+
+        clearInterval(
+            detectionTimer
+        );
+    }
+
+    detectionTimer =
+        setInterval(
+            detectFace,
+            500
+        );
+}
+
+
+async function detectFace() {
+
+    if (
+        !cameraReady ||
+        busy ||
+        !modelsLoaded ||
+        video.readyState < 2
+    ) {
+
+        return;
+    }
+
+    try {
+
+        /*
+            SSD MobileNet detection.
+
+            Lower confidence makes it easier for
+            the detector to recognize faces in
+            imperfect lighting.
+        */
+
+        const detection =
+            await faceapi
+                .detectSingleFace(
+                    video,
+                    new faceapi.SsdMobilenetv1Options({
+                        minConfidence: 0.30
+                    })
+                )
+                .withFaceLandmarks();
+
+
+        if (!detection) {
+
+            faceDetected = false;
+
+            cameraArea.classList.remove(
+                "face-found"
+            );
+
+            setStatus(
+                "Position your face inside the frame"
+            );
+
+            captureCount.textContent =
+                "Face not detected — move closer or improve lighting";
+
+            return;
+        }
+
+
+        faceDetected = true;
+
+        cameraArea.classList.add(
+            "face-found"
+        );
+
+        setStatus(
+            "Face detected — ready",
+            "success"
+        );
+
+        captureCount.textContent =
+            "Face detected — ready to scan";
+
+    } catch (error) {
+
+        console.error(
+            "FACE DETECTION ERROR:",
+            error
+        );
+    }
+}
+
+
+/* ============================================================
+   GET FACE DESCRIPTOR
+   ============================================================ */
+
+async function getFaceDescriptor() {
+
+    if (
+        !modelsLoaded ||
+        !cameraReady ||
+        video.readyState < 2
+    ) {
+
+        return null;
+    }
+
+    try {
+
+        const result =
+            await faceapi
+                .detectSingleFace(
+                    video,
+                    new faceapi.SsdMobilenetv1Options({
+                        minConfidence: 0.25
+                    })
+                )
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+
+
+        if (!result) {
+
+            return null;
+        }
+
+
+        /*
+            Make sure the descriptor is valid.
+        */
+
+        if (
+            !result.descriptor ||
+            result.descriptor.length !== 128
+        ) {
+
+            return null;
+        }
+
+
+        return Array.from(
+            result.descriptor
+        );
+
+    } catch (error) {
+
+        console.error(
+            "DESCRIPTOR ERROR:",
+            error
+        );
+
+        return null;
+    }
+}
+
+
+/* ============================================================
+   CAPTURE ONE FACE
+   ============================================================ */
+
+async function captureDescriptor(
+    timeout = 10000
+) {
+
+    const started =
+        Date.now();
+
+
+    while (
+        Date.now() - started < timeout
+    ) {
+
+        const descriptor =
+            await getFaceDescriptor();
+
+
+        if (descriptor) {
+
+            return descriptor;
+        }
+
+
+        await sleep(250);
+    }
+
+
+    return null;
+}
+
+
+/* ============================================================
+   EMAIL
+   ============================================================ */
+
+function validEmail(email) {
+
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        .test(email);
+}
+
+
+/* ============================================================
+   SERVER REQUEST
+   ============================================================ */
+
+async function serverRequest(
+    endpoint,
+    options = {}
+) {
+
+    const url =
+        `${FACE_SECURITY_API}${endpoint}`;
+
+
+    console.log(
+        "FACE SECURITY REQUEST:",
+        url
+    );
+
+
+    let response;
+
+
+    try {
+
+        response =
+            await fetch(
+                url,
+                {
+                    ...options,
+
+                    headers: {
+
+                        "Content-Type":
+                            "application/json",
+
+                        ...(options.headers || {})
+                    }
+                }
+            );
+
+    } catch (error) {
+
+        console.error(
+            "NETWORK ERROR:",
+            error
+        );
+
+        throw new Error(
+            "Could not connect to the face security server. Make sure the Render server is running."
+        );
+    }
+
+
+    let data = {};
+
+
+    try {
+
+        data =
+            await response.json();
+
+    } catch {
+
+        data = {};
+    }
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            data.message ||
+            `Server returned HTTP ${response.status}`
+        );
+    }
+
+
+    return data;
+}
+
+
+/* ============================================================
+   CHECK STATUS
+   ============================================================ */
+
+async function checkFaceStatus(
+    email
+) {
+
+    return await serverRequest(
+        "/api/face/status",
+        {
+
+            method: "POST",
+
+            body:
+                JSON.stringify({
+                    email
+                })
+        }
+    );
+}
+
+
+/* ============================================================
+   REGISTER FACE
+   ============================================================ */
+
+async function registerFace() {
+
+    const email =
+        emailInput.value
+            .trim()
+            .toLowerCase();
+
+
+    if (!email) {
+
+        showMessage(
+            "Enter your account email first.",
+            "error"
+        );
+
+        emailInput.focus();
+
+        return;
+    }
+
+
+    if (!validEmail(email)) {
+
+        showMessage(
+            "Enter a valid email address.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    if (!cameraReady) {
+
+        showMessage(
+            "Camera is not ready.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    if (!modelsLoaded) {
+
+        showMessage(
+            "Face recognition is still loading.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    setLoading(true);
+
+    hideMessage();
+
+    setProgress(0);
+
+    cameraArea.classList.add(
+        "scanning"
+    );
+
+
+    try {
+
+        /*
+            FIRST make sure the detector can
+            actually see the face.
+        */
+
+        setStatus(
+            "Looking for your face..."
+        );
+
+        captureCount.textContent =
+            "Look directly at the camera";
+
+
+        let firstDescriptor = null;
+
+
+        for (
+            let attempt = 0;
+            attempt < 30;
+            attempt++
+        ) {
+
+            firstDescriptor =
+                await getFaceDescriptor();
+
+
+            if (firstDescriptor) {
+                break;
+            }
+
+
+            await sleep(250);
+        }
+
+
+        if (!firstDescriptor) {
+
+            throw new Error(
+                "Your face could not be detected clearly. Move closer, face the camera directly, and make sure your face is well lit."
+            );
+        }
+
+
+        /*
+            We already have capture #1.
+        */
+
+        const descriptors = [];
+
+        descriptors.push(
+            firstDescriptor
+        );
+
+
+        setProgress(20);
+
+        setStatus(
+            "Face detected",
+            "success"
+        );
+
+        captureCount.textContent =
+            "Capture 1 of 5 complete";
+
+
+        /*
+            Capture four more samples.
+
+            We do not require the face to disappear
+            between captures.
+        */
+
+        for (
+            let i = 1;
+            i < 5;
+            i++
+        ) {
+
+            setStatus(
+                `Scanning face ${i + 1} of 5...`
+            );
+
+            captureCount.textContent =
+                `Capture ${i + 1} of 5 — keep your face still`;
+
+
+            await sleep(500);
+
+
+            let descriptor = null;
+
+
+            for (
+                let attempt = 0;
+                attempt < 20;
+                attempt++
+            ) {
+
+                descriptor =
+                    await getFaceDescriptor();
+
+
+                if (descriptor) {
+                    break;
+                }
+
+
+                await sleep(200);
+            }
+
+
+            /*
+                If one frame fails, try again rather
+                than immediately killing registration.
+            */
+
+            if (!descriptor) {
+
+                i--;
+
+                setStatus(
+                    "Face temporarily lost — retrying..."
+                );
+
+                await sleep(500);
+
+                continue;
+            }
+
+
+            descriptors.push(
+                descriptor
+            );
+
+
+            setProgress(
+                ((i + 1) / 5) * 70
+            );
+
+            captureCount.textContent =
+                `Capture ${i + 1} of 5 complete`;
+        }
+
+
+        /*
+            Send all descriptors to Render.
+        */
+
+        setStatus(
+            "Saving face profile..."
+        );
+
+        captureCount.textContent =
+            "Sending face data securely...";
+
+        setProgress(80);
+
+
+        const data =
+            await serverRequest(
+                "/api/face/register",
+                {
+
+                    method: "POST",
+
+                    body:
+                        JSON.stringify({
+
+                            email,
+
+                            descriptors
+                        })
+                }
+            );
+
+
+        console.log(
+            "REGISTRATION RESPONSE:",
+            data
+        );
+
+
+        if (
+            !data ||
+            data.registered !== true
+        ) {
+
+            throw new Error(
+                data?.message ||
+                "The server did not confirm face registration."
+            );
+        }
+
+
+        /*
+            SUCCESS
+        */
+
+        setProgress(100);
+
+        cameraArea.classList.remove(
+            "scanning",
+            "face-found"
+        );
+
+        cameraArea.classList.add(
+            "success-state"
+        );
+
+
+        setStatus(
+            "Face registered successfully",
+            "success"
+        );
+
+
+        captureCount.textContent =
+            "Your face is now registered";
+
+
+        showMessage(
+            "Face registration complete. Your face has been securely saved.",
+            "success"
+        );
+
+
+        actionButton.textContent =
+            "Face Registered";
+
+
+        await sleep(1800);
+
+
+        /*
+            Switch back to login mode.
+        */
+
+        switchMode("login");
+
+
+    } catch (error) {
+
+        console.error(
+            "REGISTRATION ERROR:",
+            error
+        );
+
+
+        cameraArea.classList.remove(
+            "scanning",
+            "success-state"
+        );
+
+
+        setProgress(0);
+
+
+        setStatus(
+            "Face registration failed",
+            "error"
+        );
+
+
+        captureCount.textContent =
+            "Registration failed";
+
+
+        showMessage(
+            error.message ||
+            "Unable to register your face.",
+            "error"
+        );
+
+
+    } finally {
+
+        setLoading(false);
+    }
+}
+
+
+/* ============================================================
+   FACE LOGIN
+   ============================================================ */
+
+async function loginWithFace() {
+
+    const email =
+        emailInput.value
+            .trim()
+            .toLowerCase();
+
+
+    if (!email) {
+
+        showMessage(
+            "Enter your account email first.",
+            "error"
+        );
+
+        emailInput.focus();
+
+        return;
+    }
+
+
+    if (!validEmail(email)) {
+
+        showMessage(
+            "Enter a valid email address.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    if (!cameraReady) {
+
+        showMessage(
+            "Camera is not ready.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    if (!modelsLoaded) {
+
+        showMessage(
+            "Face recognition is still loading.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    setLoading(true);
+
+    hideMessage();
+
+    cameraArea.classList.add(
+        "scanning"
+    );
+
+    setProgress(10);
+
+
+    try {
+
+        /*
+            Check whether this account has
+            a registered face.
+        */
+
+        setStatus(
+            "Checking registered face..."
+        );
+
+
+        const status =
+            await checkFaceStatus(
+                email
+            );
+
+
+        if (
+            !status ||
+            status.registered !== true
+        ) {
+
+            throw new Error(
+                "No face is registered for this account. Register your face first."
+            );
+        }
+
+
+        setProgress(30);
+
+
+        /*
+            Capture NEW descriptor.
+        */
+
+        setStatus(
+            "Scanning your face..."
+        );
+
+        captureCount.textContent =
+            "Look directly at the camera";
+
+
+        let descriptor = null;
+
+
+        for (
+            let attempt = 0;
+            attempt < 30;
+            attempt++
+        ) {
+
+            descriptor =
+                await getFaceDescriptor();
+
+
+            if (descriptor) {
+                break;
+            }
+
+
+            await sleep(250);
+        }
+
+
+        if (!descriptor) {
+
+            throw new Error(
+                "Your face could not be detected. Move closer and make sure your face is well lit."
+            );
+        }
+
+
+        setProgress(60);
+
+
+        setStatus(
+            "Verifying identity..."
+        );
+
+        captureCount.textContent =
+            "Comparing with registered face";
+
+
+        /*
+            Send new descriptor to backend.
+        */
+
+        const data =
+            await serverRequest(
+                "/api/face/login",
+                {
+
+                    method: "POST",
+
+                    body:
+                        JSON.stringify({
+
+                            email,
+
+                            descriptor
+                        })
+                }
+            );
+
+
+        console.log(
+            "LOGIN RESPONSE:",
+            data
+        );
+
+
+        if (
+            !data ||
+            data.authenticated !== true
+        ) {
+
+            throw new Error(
+                data?.message ||
+                "Face authentication failed."
+            );
+        }
+
+
+        /*
+            LOGIN SUCCESS
+        */
+
+        setProgress(100);
+
+
+        cameraArea.classList.remove(
+            "scanning",
+            "face-found"
+        );
+
+        cameraArea.classList.add(
+            "success-state"
+        );
+
+
+        setStatus(
+            "Identity confirmed",
+            "success"
+        );
+
+
+        captureCount.textContent =
+            "Face verified successfully";
+
+
+        showMessage(
+            "Face recognized. Login successful.",
+            "success"
+        );
+
+
+        /*
+            Store session token.
+        */
+
+        if (data.token) {
+
+            localStorage.setItem(
+                "legacyLensSessionToken",
+                data.token
+            );
+        }
+
+
+        localStorage.setItem(
+            "legacyLensEmail",
+            email
+        );
+
+
+        await sleep(1000);
+
+
+        /*
+            Change this if your protected
+            page has a different filename.
+        */
+
+        window.location.href =
+            "vault.html";
+
+
+    } catch (error) {
+
+        console.error(
+            "LOGIN ERROR:",
+            error
+        );
+
+
+        cameraArea.classList.remove(
+            "scanning",
+            "success-state"
+        );
+
+
+        setProgress(0);
+
+
+        setStatus(
+            "Face not recognized",
+            "error"
+        );
+
+
+        captureCount.textContent =
+            "Login denied";
+
+
+        showMessage(
+            error.message ||
+            "Face not recognized. Login denied.",
+            "error"
+        );
+
+
+    } finally {
+
+        setLoading(false);
+    }
+}
+
+
+/* ============================================================
+   MODE SWITCH
+   ============================================================ */
+
+function switchMode(mode) {
+
+    currentMode =
+        mode;
+
+
+    hideMessage();
+
+    setProgress(0);
+
+
+    cameraArea.classList.remove(
+        "success-state",
+        "scanning",
+        "face-found"
+    );
+
+
+    if (mode === "login") {
+
+        loginMode.classList.add(
+            "active"
+        );
+
+        registerMode.classList.remove(
+            "active"
+        );
+
+        actionButton.textContent =
+            "Start Face Login";
+
+        captureCount.textContent =
+            "Position your face inside the frame";
+
+    } else {
+
+        registerMode.classList.add(
+            "active"
+        );
+
+        loginMode.classList.remove(
+            "active"
+        );
+
+        actionButton.textContent =
+            "Register My Face";
+
+        captureCount.textContent =
+            "Position your face inside the frame";
+    }
+
+
+    updateButton();
+}
+
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+
+loginMode.addEventListener(
+    "click",
+    () => {
+
+        if (!busy) {
+
+            switchMode(
+                "login"
+            );
+        }
+    }
+);
+
+
+registerMode.addEventListener(
+    "click",
+    () => {
+
+        if (!busy) {
+
+            switchMode(
+                "register"
+            );
+        }
+    }
+);
+
+
+actionButton.addEventListener(
+    "click",
+    async () => {
+
+        if (busy) {
+            return;
+        }
+
+        if (currentMode === "login") {
+
+            await loginWithFace();
+
+        } else {
+
+            await registerFace();
+        }
+    }
+);
+
+
+cameraButton.addEventListener(
+    "click",
+    async () => {
+
+        if (busy) {
+            return;
+        }
+
+        await startCamera();
+    }
+);
+
+
+emailInput.addEventListener(
+    "input",
+    () => {
+
+        hideMessage();
+
+        updateButton();
+    }
+);
+
+
+window.addEventListener(
+    "beforeunload",
+    () => {
+
+        stopCamera();
+    }
+);
+
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+
+async function initialize() {
+
+    actionButton.disabled = true;
+
+    setStatus(
+        "Loading face recognition..."
+    );
+
+    captureCount.textContent =
+        "Please wait...";
+
+
+    await loadModels();
+
+
+    if (modelsLoaded) {
+
+        await startCamera();
+    }
+}
+
+
+
+initialize();
+
+</script>
+
+</body>
+</html>

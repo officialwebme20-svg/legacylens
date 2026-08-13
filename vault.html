@@ -1,0 +1,2606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#030509">
+<title>Legacy Lens AI — Security Vault</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg: #030509;
+    --panel: #080c13;
+    --panel2: #0d131d;
+    --border: #273342;
+    --border2: #344253;
+    --text: #f8fafc;
+    --muted: #8d9aaa;
+    --gold: #d4a72c;
+    --gold2: #f5d76e;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #60a5fa;
+}
+
+html,
+body {
+    width: 100%;
+    min-height: 100%;
+    background: var(--bg);
+}
+
+body {
+    min-height: 100vh;
+    color: var(--text);
+    font-family: Inter, Arial, Helvetica, sans-serif;
+    overflow-x: hidden;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(
+            circle at 50% 35%,
+            rgba(35, 48, 65, .65),
+            rgba(7, 11, 17, .7) 38%,
+            #030509 78%
+        );
+}
+
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: .12;
+    background-image:
+        linear-gradient(
+            rgba(255,255,255,.025) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            90deg,
+            rgba(255,255,255,.025) 1px,
+            transparent 1px
+        );
+    background-size: 45px 45px;
+}
+
+button,
+input {
+    font: inherit;
+}
+
+button {
+    -webkit-tap-highlight-color: transparent;
+}
+
+.app {
+    width: 100%;
+    min-height: 100vh;
+    padding: 25px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+}
+
+.panel {
+    width: min(1120px, 100%);
+    min-height: 730px;
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    gap: 35px;
+    padding: 35px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 32px;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(13,18,27,.97),
+            rgba(5,8,13,.98)
+        );
+    box-shadow:
+        0 40px 130px rgba(0,0,0,.72),
+        inset 0 1px rgba(255,255,255,.04);
+}
+
+.header {
+    position: absolute;
+    top: 25px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    z-index: 10;
+}
+
+.logo {
+    color: var(--gold2);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.title {
+    font-size: 30px;
+    line-height: 1.1;
+    font-weight: 850;
+    letter-spacing: -.8px;
+}
+
+.subtitle {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.vault-zone {
+    min-height: 650px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 55px;
+}
+
+.vault {
+    width: 425px;
+    height: 425px;
+    position: relative;
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle at 32% 23%,
+            #69737f 0,
+            #37414c 18%,
+            #1b242e 43%,
+            #090e15 78%
+        );
+    border: 15px solid #1b232d;
+    box-shadow:
+        0 0 0 4px #06090d,
+        0 0 0 9px #3a4552,
+        0 35px 110px rgba(0,0,0,.82),
+        inset 0 0 55px rgba(0,0,0,.95);
+    transition: transform .7s cubic-bezier(.18,.8,.22,1);
+}
+
+.vault::before {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    border: 3px solid #687581;
+    box-shadow:
+        inset 0 0 35px rgba(0,0,0,.95),
+        0 0 20px rgba(245,215,110,.08);
+}
+
+.vault::after {
+    content: "";
+    position: absolute;
+    inset: 30px;
+    border-radius: 50%;
+    border: 2px dashed rgba(245,215,110,.27);
+    animation: ring 4s linear infinite;
+}
+
+@keyframes ring {
+    from {
+        transform: rotate(0);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.vault-door {
+    position: absolute;
+    inset: 50px;
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle at 35% 23%,
+            #46515d,
+            #252f39 38%,
+            #0b1017 78%
+        );
+    border: 7px solid #111821;
+    box-shadow:
+        inset 0 0 48px rgba(0,0,0,.95),
+        0 0 30px rgba(0,0,0,.55);
+    transform-origin: left center;
+    transition:
+        transform 1.8s cubic-bezier(.15,.75,.2,1),
+        opacity 1.2s ease;
+    z-index: 4;
+}
+
+.vault.unlocked .vault-door {
+    transform:
+        perspective(1000px)
+        rotateY(-112deg);
+    opacity: .07;
+}
+
+.dial {
+    position: absolute;
+    width: 178px;
+    height: 178px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%,-50%);
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle,
+            #27313c,
+            #111820 68%,
+            #070b10
+        );
+    border: 8px solid #3d4956;
+    box-shadow:
+        0 15px 40px rgba(0,0,0,.82),
+        inset 0 0 32px rgba(0,0,0,.92);
+}
+
+.dial::before {
+    content: "";
+    position: absolute;
+    inset: 17px;
+    border-radius: 50%;
+    border: 2px solid #697684;
+    box-shadow: inset 0 0 17px rgba(0,0,0,.75);
+}
+
+.dial::after {
+    content: "";
+    position: absolute;
+    width: 3px;
+    height: 58px;
+    top: 7px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gold2);
+    box-shadow: 0 0 14px rgba(245,215,110,.85);
+}
+
+.dial-center {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%,-50%);
+    border-radius: 50%;
+    background: #070a0f;
+    border: 3px solid #7c8794;
+    z-index: 2;
+}
+
+.handle {
+    position: absolute;
+    width: 195px;
+    height: 55px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%,-50%);
+    z-index: 7;
+    pointer-events: none;
+}
+
+.handle-bar {
+    position: absolute;
+    width: 148px;
+    height: 20px;
+    right: -4px;
+    top: 17px;
+    border-radius: 10px;
+    background:
+        linear-gradient(
+            #707b87,
+            #222b35,
+            #596572
+        );
+    box-shadow: 0 5px 10px rgba(0,0,0,.8);
+}
+
+.handle-grip {
+    position: absolute;
+    width: 44px;
+    height: 52px;
+    right: -19px;
+    top: 1px;
+    border-radius: 11px;
+    background:
+        linear-gradient(
+            90deg,
+            #707d89,
+            #252e38,
+            #596572
+        );
+    border: 2px solid #0c1117;
+}
+
+.bolt {
+    position: absolute;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle at 32% 27%,
+            #c5cdd5,
+            #55616d 34%,
+            #151b22 72%
+        );
+    border: 2px solid #080c11;
+    box-shadow:
+        inset 0 2px 4px rgba(255,255,255,.2);
+    z-index: 8;
+}
+
+.b1 {
+    top: 70px;
+    left: 76px;
+}
+
+.b2 {
+    top: 70px;
+    right: 76px;
+}
+
+.b3 {
+    bottom: 70px;
+    left: 76px;
+}
+
+.b4 {
+    bottom: 70px;
+    right: 76px;
+}
+
+.status {
+    position: absolute;
+    bottom: 23px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 105px;
+    padding: 8px 16px;
+    border-radius: 30px;
+    background: #070b10;
+    border: 1px solid #35404d;
+    color: var(--gold2);
+    text-align: center;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    z-index: 10;
+}
+
+.vault.success .dial {
+    animation: dialSpin 1.3s cubic-bezier(.2,.8,.2,1);
+}
+
+@keyframes dialSpin {
+    from {
+        transform: translate(-50%,-50%) rotate(0);
+    }
+    to {
+        transform: translate(-50%,-50%) rotate(360deg);
+    }
+}
+
+.vault.processing {
+    animation: vaultShake .11s linear infinite;
+}
+
+@keyframes vaultShake {
+    0% {
+        transform: translateX(0) rotate(0);
+    }
+    25% {
+        transform: translateX(2px) rotate(1deg);
+    }
+    50% {
+        transform: translateX(-2px) rotate(-1deg);
+    }
+    75% {
+        transform: translateX(2px) rotate(1deg);
+    }
+    100% {
+        transform: translateX(0) rotate(0);
+    }
+}
+
+.vault.error {
+    animation: errorShake .45s ease;
+}
+
+@keyframes errorShake {
+    0%,100% {
+        transform: translateX(0);
+    }
+    20% {
+        transform: translateX(-9px);
+    }
+    40% {
+        transform: translateX(9px);
+    }
+    60% {
+        transform: translateX(-6px);
+    }
+    80% {
+        transform: translateX(6px);
+    }
+}
+
+.control {
+    width: 100%;
+    max-width: 400px;
+    justify-self: center;
+    align-self: center;
+}
+
+.screen {
+    width: 100%;
+    padding: 26px;
+    border-radius: 22px;
+    border: 1px solid var(--border);
+    background:
+        linear-gradient(
+            145deg,
+            #0c121b,
+            #070c13
+        );
+    box-shadow:
+        0 20px 60px rgba(0,0,0,.45),
+        inset 0 1px rgba(255,255,255,.03);
+}
+
+.hidden {
+    display: none !important;
+}
+
+.screen h2 {
+    font-size: 21px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.screen p {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.65;
+    margin-bottom: 21px;
+}
+
+.account-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 13px;
+    border: 1px solid rgba(96,165,250,.15);
+    border-radius: 12px;
+    background: rgba(96,165,250,.04);
+}
+
+.account-icon {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(96,165,250,.1);
+    border: 1px solid rgba(96,165,250,.2);
+    color: var(--blue);
+}
+
+.account-details {
+    min-width: 0;
+}
+
+.account-label {
+    color: #64748b;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 3px;
+}
+
+.account-email {
+    color: #dbeafe;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pin-display {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.pin-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid #536173;
+    transition: .18s ease;
+}
+
+.pin-dot.active {
+    background: var(--gold2);
+    border-color: var(--gold2);
+    box-shadow: 0 0 15px rgba(245,215,110,.65);
+    transform: scale(1.08);
+}
+
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(3,1fr);
+    gap: 9px;
+}
+
+.key {
+    height: 50px;
+    border: 1px solid #293646;
+    border-radius: 11px;
+    background: #111923;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: .15s ease;
+}
+
+.key:hover {
+    background: #1a2532;
+    border-color: #526173;
+}
+
+.key:active {
+    transform: scale(.94);
+}
+
+.key.clear {
+    color: #f87171;
+}
+
+.key.enter {
+    color: #4ade80;
+}
+
+.message {
+    min-height: 21px;
+    margin-top: 14px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.message.info {
+    color: #94a3b8;
+}
+
+.message.success {
+    color: #4ade80;
+}
+
+.message.error {
+    color: #f87171;
+}
+
+.input {
+    width: 100%;
+    height: 48px;
+    margin-bottom: 11px;
+    padding: 0 14px;
+    border-radius: 11px;
+    border: 1px solid #2b3949;
+    outline: none;
+    background: #090f17;
+    color: #fff;
+    font-size: 14px;
+    transition: .2s;
+}
+
+.input::placeholder {
+    color: #566273;
+}
+
+.input:focus {
+    border-color: #64748b;
+    box-shadow: 0 0 0 3px rgba(100,116,139,.08);
+}
+
+.code-input {
+    text-align: center;
+    letter-spacing: 8px;
+    font-size: 22px;
+    font-weight: 800;
+}
+
+.primary {
+    width: 100%;
+    height: 48px;
+    border: 0;
+    border-radius: 11px;
+    background:
+        linear-gradient(
+            135deg,
+            #c79620,
+            #f5d76e
+        );
+    color: #090c10;
+    font-weight: 850;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px rgba(212,167,44,.2);
+}
+
+.primary:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.secondary {
+    width: 100%;
+    height: 45px;
+    margin-top: 10px;
+    border: 1px solid #334155;
+    border-radius: 11px;
+    background: #111827;
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.secondary:hover {
+    background: #172131;
+}
+
+.secondary:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+.forgot {
+    text-align: center;
+    margin-top: 15px;
+}
+
+.link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #93c5fd;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.link:hover {
+    text-decoration: underline;
+}
+
+.link:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    text-decoration: none;
+}
+
+.resend {
+    margin-top: 13px;
+    text-align: center;
+}
+
+.security {
+    margin-top: 15px;
+    padding: 11px;
+    border-radius: 10px;
+    border: 1px solid rgba(59,130,246,.13);
+    background: rgba(59,130,246,.04);
+    color: #64748b;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.security strong {
+    color: #94a3b8;
+}
+
+.email-icon {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 15px;
+    border-radius: 50%;
+    border: 1px solid rgba(96,165,250,.25);
+    background: rgba(96,165,250,.08);
+    color: #60a5fa;
+    font-size: 22px;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 18px;
+}
+
+.step-item {
+    height: 4px;
+    flex: 1;
+    border-radius: 10px;
+    background: #1d2733;
+}
+
+.step-item.active {
+    background: var(--gold2);
+    box-shadow: 0 0 10px rgba(245,215,110,.2);
+}
+
+@media(max-width:900px) {
+    .panel {
+        grid-template-columns: 1fr;
+        min-height: auto;
+        padding: 28px;
+        gap: 10px;
+    }
+
+    .header {
+        position: relative;
+        top: auto;
+        margin-bottom: 0;
+    }
+
+    .vault-zone {
+        min-height: 470px;
+        padding-top: 10px;
+    }
+
+    .control {
+        max-width: 430px;
+        margin: 0 auto 20px;
+    }
+}
+
+@media(max-width:520px) {
+    .app {
+        padding: 10px;
+    }
+
+    .panel {
+        padding: 18px;
+        border-radius: 22px;
+    }
+
+    .title {
+        font-size: 25px;
+    }
+
+    .subtitle {
+        font-size: 12px;
+    }
+
+    .vault-zone {
+        min-height: 350px;
+    }
+
+    .vault {
+        width: 290px;
+        height: 290px;
+        border-width: 11px;
+    }
+
+    .vault-door {
+        inset: 34px;
+    }
+
+    .dial {
+        width: 128px;
+        height: 128px;
+    }
+
+    .dial::after {
+        height: 42px;
+    }
+
+    .handle {
+        width: 145px;
+    }
+
+    .handle-bar {
+        width: 106px;
+    }
+
+    .b1 {
+        top: 48px;
+        left: 51px;
+    }
+
+    .b2 {
+        top: 48px;
+        right: 51px;
+    }
+
+    .b3 {
+        bottom: 48px;
+        left: 51px;
+    }
+
+    .b4 {
+        bottom: 48px;
+        right: 51px;
+    }
+
+    .bolt {
+        width: 22px;
+        height: 22px;
+    }
+
+    .screen {
+        padding: 20px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+<div class="panel">
+
+<div class="header">
+    <div class="logo">Legacy Lens AI</div>
+    <div class="title">Security Vault</div>
+    <div class="subtitle">Your private access layer</div>
+</div>
+
+<div class="vault-zone">
+
+<div class="vault" id="vault">
+
+    <div class="bolt b1"></div>
+    <div class="bolt b2"></div>
+    <div class="bolt b3"></div>
+    <div class="bolt b4"></div>
+
+    <div class="vault-door">
+
+        <div class="dial">
+            <div class="dial-center"></div>
+        </div>
+
+        <div class="handle">
+            <div class="handle-bar"></div>
+            <div class="handle-grip"></div>
+        </div>
+
+    </div>
+
+    <div class="status" id="vaultStatus">
+        LOCKED
+    </div>
+
+</div>
+
+</div>
+
+<div class="control">
+
+<div class="screen" id="accountScreen">
+
+    <div class="step">
+        <div class="step-item active"></div>
+        <div class="step-item"></div>
+        <div class="step-item"></div>
+    </div>
+
+    <h2>Security Vault</h2>
+
+    <p>
+        Your vault is connected to your Legacy Lens AI account.
+        Access is tied to the email you originally used for your account.
+    </p>
+
+    <div class="account-card">
+        <div class="account-icon">✉</div>
+
+        <div class="account-details">
+            <div class="account-label">
+                Verified account
+            </div>
+
+            <div class="account-email" id="accountEmail">
+                Checking account...
+            </div>
+        </div>
+    </div>
+
+    <div class="message info" id="accountMessage">
+        Checking your account...
+    </div>
+
+</div>
+
+<div class="screen hidden" id="setupScreen">
+
+    <div class="step">
+        <div class="step-item active"></div>
+        <div class="step-item"></div>
+        <div class="step-item"></div>
+    </div>
+
+    <h2>Create Your Vault</h2>
+
+    <p>
+        Create a private 6-digit PIN. This PIN will protect
+        your Legacy Lens AI account on this device.
+    </p>
+
+    <div class="account-card">
+        <div class="account-icon">✉</div>
+
+        <div class="account-details">
+            <div class="account-label">
+                Account email
+            </div>
+
+            <div class="account-email" id="setupEmail">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <div class="pin-display" id="setupDots">
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+    </div>
+
+    <div class="keypad">
+        <button class="key" data-key="1">1</button>
+        <button class="key" data-key="2">2</button>
+        <button class="key" data-key="3">3</button>
+        <button class="key" data-key="4">4</button>
+        <button class="key" data-key="5">5</button>
+        <button class="key" data-key="6">6</button>
+        <button class="key" data-key="7">7</button>
+        <button class="key" data-key="8">8</button>
+        <button class="key" data-key="9">9</button>
+        <button class="key clear" data-action="clear">C</button>
+        <button class="key" data-key="0">0</button>
+        <button class="key enter" data-action="enter">✓</button>
+    </div>
+
+    <div class="message info" id="setupMessage">
+        Choose a 6-digit PIN.
+    </div>
+
+</div>
+
+<div class="screen hidden" id="confirmScreen">
+
+    <div class="step">
+        <div class="step-item active"></div>
+        <div class="step-item active"></div>
+        <div class="step-item"></div>
+    </div>
+
+    <h2>Confirm Your PIN</h2>
+
+    <p>
+        Enter your new 6-digit PIN again.
+    </p>
+
+    <div class="pin-display" id="confirmDots">
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+    </div>
+
+    <div class="keypad">
+        <button class="key" data-key="1">1</button>
+        <button class="key" data-key="2">2</button>
+        <button class="key" data-key="3">3</button>
+        <button class="key" data-key="4">4</button>
+        <button class="key" data-key="5">5</button>
+        <button class="key" data-key="6">6</button>
+        <button class="key" data-key="7">7</button>
+        <button class="key" data-key="8">8</button>
+        <button class="key" data-key="9">9</button>
+        <button class="key clear" data-action="clear">C</button>
+        <button class="key" data-key="0">0</button>
+        <button class="key enter" data-action="enter">✓</button>
+    </div>
+
+    <div class="message info" id="confirmMessage">
+        Confirm your PIN.
+    </div>
+
+</div>
+
+<div class="screen hidden" id="unlockScreen">
+
+    <div class="step">
+        <div class="step-item active"></div>
+        <div class="step-item active"></div>
+        <div class="step-item active"></div>
+    </div>
+
+    <h2>Unlock Vault</h2>
+
+    <p>
+        Enter your 6-digit vault PIN to continue.
+    </p>
+
+    <div class="account-card">
+        <div class="account-icon">✉</div>
+
+        <div class="account-details">
+            <div class="account-label">
+                Protected account
+            </div>
+
+            <div class="account-email" id="unlockEmail">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <div class="pin-display" id="unlockDots">
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+    </div>
+
+    <div class="keypad">
+        <button class="key" data-key="1">1</button>
+        <button class="key" data-key="2">2</button>
+        <button class="key" data-key="3">3</button>
+        <button class="key" data-key="4">4</button>
+        <button class="key" data-key="5">5</button>
+        <button class="key" data-key="6">6</button>
+        <button class="key" data-key="7">7</button>
+        <button class="key" data-key="8">8</button>
+        <button class="key" data-key="9">9</button>
+        <button class="key clear" data-action="clear">C</button>
+        <button class="key" data-key="0">0</button>
+        <button class="key enter" data-action="enter">✓</button>
+    </div>
+
+    <div class="message info" id="unlockMessage">
+        Enter your vault PIN.
+    </div>
+
+    <div class="forgot">
+        <button class="link" id="forgotButton">
+            Forgot your vault PIN?
+        </button>
+    </div>
+
+    <div class="security">
+        <strong>Protected account</strong><br>
+        PIN recovery requires verification of the
+        original account email.
+    </div>
+
+</div>
+
+<div class="screen hidden" id="forgotScreen">
+
+    <div class="email-icon">✉</div>
+
+    <h2>Verify Your Account</h2>
+
+    <p>
+        We will send a verification code to the email
+        already connected to your Legacy Lens AI account.
+        You cannot change this email here.
+    </p>
+
+    <div class="account-card">
+        <div class="account-icon">✓</div>
+
+        <div class="account-details">
+            <div class="account-label">
+                Verification email
+            </div>
+
+            <div class="account-email" id="resetEmailDisplay">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <button class="primary" id="sendResetButton">
+        Send Verification Code
+    </button>
+
+    <button class="secondary" id="backToUnlock">
+        Back to Vault
+    </button>
+
+    <div class="message info" id="forgotMessage"></div>
+
+</div>
+
+<div class="screen hidden" id="resetScreen">
+
+    <div class="email-icon">✉</div>
+
+    <h2>Verify Your Email</h2>
+
+    <p>
+        Enter the 6-digit verification code sent to
+        your registered Legacy Lens AI email.
+    </p>
+
+    <div class="account-card">
+        <div class="account-icon">✓</div>
+
+        <div class="account-details">
+            <div class="account-label">
+                Code sent to
+            </div>
+
+            <div class="account-email" id="codeEmail">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <input
+        class="input code-input"
+        id="resetCode"
+        type="text"
+        inputmode="numeric"
+        maxlength="6"
+        placeholder="000000"
+        autocomplete="one-time-code"
+    >
+
+    <button class="primary" id="verifyCodeButton">
+        Verify Code
+    </button>
+
+    <div class="resend">
+        <button class="link" id="resendButton">
+            Resend Code
+        </button>
+    </div>
+
+    <button class="secondary" id="backToForgot">
+        Back
+    </button>
+
+    <div class="message info" id="resetMessage"></div>
+
+</div>
+
+<div class="screen hidden" id="newPinScreen">
+
+    <div class="step">
+        <div class="step-item active"></div>
+        <div class="step-item active"></div>
+        <div class="step-item active"></div>
+    </div>
+
+    <h2>Create New Vault PIN</h2>
+
+    <p>
+        Your account has been verified. Create a new
+        6-digit PIN.
+    </p>
+
+    <input
+        class="input code-input"
+        id="newPin"
+        type="password"
+        inputmode="numeric"
+        maxlength="6"
+        placeholder="New PIN"
+        autocomplete="new-password"
+    >
+
+    <input
+        class="input code-input"
+        id="confirmNewPin"
+        type="password"
+        inputmode="numeric"
+        maxlength="6"
+        placeholder="Confirm PIN"
+        autocomplete="new-password"
+    >
+
+    <button class="primary" id="resetPinButton">
+        Reset Vault PIN
+    </button>
+
+    <button class="secondary" id="backToVerify">
+        Back to Verification
+    </button>
+
+    <div class="message info" id="newPinMessage"></div>
+
+</div>
+
+</div>
+</div>
+</div>
+
+<script>
+const BACKEND_URL = "https://legacylens-lon6.onrender.com";
+const DASHBOARD_URL = "dashboard.html";
+
+const vault = document.getElementById("vault");
+const vaultStatus = document.getElementById("vaultStatus");
+
+const accountScreen = document.getElementById("accountScreen");
+const setupScreen = document.getElementById("setupScreen");
+const confirmScreen = document.getElementById("confirmScreen");
+const unlockScreen = document.getElementById("unlockScreen");
+const forgotScreen = document.getElementById("forgotScreen");
+const resetScreen = document.getElementById("resetScreen");
+const newPinScreen = document.getElementById("newPinScreen");
+
+const accountEmail = document.getElementById("accountEmail");
+const setupEmail = document.getElementById("setupEmail");
+const unlockEmail = document.getElementById("unlockEmail");
+const resetEmailDisplay = document.getElementById("resetEmailDisplay");
+const codeEmail = document.getElementById("codeEmail");
+
+const accountMessage = document.getElementById("accountMessage");
+const setupMessage = document.getElementById("setupMessage");
+const confirmMessage = document.getElementById("confirmMessage");
+const unlockMessage = document.getElementById("unlockMessage");
+const forgotMessage = document.getElementById("forgotMessage");
+const resetMessage = document.getElementById("resetMessage");
+const newPinMessage = document.getElementById("newPinMessage");
+
+const resetCode = document.getElementById("resetCode");
+const newPin = document.getElementById("newPin");
+const confirmNewPin = document.getElementById("confirmNewPin");
+
+const sendResetButton = document.getElementById("sendResetButton");
+const verifyCodeButton = document.getElementById("verifyCodeButton");
+const resetPinButton = document.getElementById("resetPinButton");
+
+const forgotButton = document.getElementById("forgotButton");
+const resendButton = document.getElementById("resendButton");
+const backToUnlock = document.getElementById("backToUnlock");
+const backToForgot = document.getElementById("backToForgot");
+const backToVerify = document.getElementById("backToVerify");
+
+let account = null;
+let setupPin = "";
+let confirmPin = "";
+let unlockPin = "";
+
+let failedAttempts = 0;
+let lockedUntil = 0;
+
+let resendTimer = 0;
+let resendInterval = null;
+
+function getAuthToken() {
+    return (
+        sessionStorage.getItem("authToken") ||
+        localStorage.getItem("authToken") ||
+        sessionStorage.getItem("legacyLensSessionToken") ||
+        localStorage.getItem("legacyLensSessionToken") ||
+        sessionStorage.getItem("legacyLensAuthToken") ||
+        localStorage.getItem("legacyLensAuthToken") ||
+        ""
+    );
+}
+
+function getStoredEmail() {
+    return (
+        sessionStorage.getItem("legacyLensEmail") ||
+        localStorage.getItem("legacyLensEmail") ||
+        sessionStorage.getItem("legacyLensAuthEmail") ||
+        localStorage.getItem("legacyLensAuthEmail") ||
+        ""
+    );
+}
+
+async function api(path, options = {}) {
+    const token = getAuthToken();
+
+    const headers = {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+    };
+
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(
+        BACKEND_URL + path,
+        {
+            ...options,
+            credentials: "include",
+            headers
+        }
+    );
+
+    const text = await response.text();
+
+    let data = {};
+
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch {
+        data = {
+            success: false,
+            message: text || "Invalid server response."
+        };
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data.message ||
+            `Server error (${response.status}).`
+        );
+    }
+
+    return data;
+}
+
+function showScreen(screen) {
+    [
+        accountScreen,
+        setupScreen,
+        confirmScreen,
+        unlockScreen,
+        forgotScreen,
+        resetScreen,
+        newPinScreen
+    ].forEach(element => {
+        element.classList.add("hidden");
+    });
+
+    screen.classList.remove("hidden");
+}
+
+function message(element, text, type = "info") {
+    element.textContent = text;
+    element.className = "message " + type;
+}
+
+function displayAccountEmail() {
+    const email =
+        account?.email ||
+        getStoredEmail();
+
+    if (!email) {
+        accountEmail.textContent = "Unable to load account email.";
+        setupEmail.textContent = "Unable to load account email.";
+        unlockEmail.textContent = "Unable to load account email.";
+        resetEmailDisplay.textContent = "Unable to load account email.";
+        codeEmail.textContent = "Unable to load account email.";
+        return;
+    }
+
+    accountEmail.textContent = email;
+    setupEmail.textContent = email;
+    unlockEmail.textContent = email;
+    resetEmailDisplay.textContent = email;
+    codeEmail.textContent = email;
+}
+
+async function loadAccount() {
+    showScreen(accountScreen);
+
+    message(
+        accountMessage,
+        "Checking your Legacy Lens AI account...",
+        "info"
+    );
+
+    const token = getAuthToken();
+
+    if (!token) {
+        const storedEmail = getStoredEmail();
+
+        if (storedEmail) {
+            account = {
+                email: storedEmail
+            };
+
+            displayAccountEmail();
+
+            message(
+                accountMessage,
+                "Authentication token not found. Please sign in again to continue.",
+                "error"
+            );
+
+            return;
+        }
+
+        message(
+            accountMessage,
+            "No authentication session was found. Please sign in again.",
+            "error"
+        );
+
+        return;
+    }
+
+    try {
+        const data = await api(
+            "/api/me",
+            {
+                method: "GET"
+            }
+        );
+
+        if (!data.success || !data.user) {
+            throw new Error(
+                data.message ||
+                "Your Legacy Lens AI session could not be verified."
+            );
+        }
+
+        if (!data.user.email) {
+            throw new Error(
+                "No verified email is connected to this account."
+            );
+        }
+
+        account = data.user;
+
+        localStorage.setItem(
+            "legacyLensEmail",
+            data.user.email
+        );
+
+        displayAccountEmail();
+
+        await checkVault();
+
+    } catch (error) {
+        console.error("Account loading error:", error);
+
+        displayAccountEmail();
+
+        message(
+            accountMessage,
+            error.message ||
+            "Unable to fetch your account.",
+            "error"
+        );
+    }
+}
+
+async function checkVault() {
+    try {
+        const data = await api(
+            "/api/vault/status",
+            {
+                method: "GET"
+            }
+        );
+
+        if (data.success && data.hasVault) {
+            showScreen(unlockScreen);
+
+            resetVaultVisual();
+
+            message(
+                unlockMessage,
+                "Enter your vault PIN.",
+                "info"
+            );
+        } else {
+            showScreen(setupScreen);
+
+            resetVaultVisual();
+
+            message(
+                setupMessage,
+                "Choose a 6-digit PIN.",
+                "info"
+            );
+        }
+
+    } catch (error) {
+        console.error("Vault status error:", error);
+
+        message(
+            accountMessage,
+            error.message ||
+            "Unable to check vault status.",
+            "error"
+        );
+
+        showScreen(setupScreen);
+
+        resetVaultVisual();
+
+        message(
+            setupMessage,
+            "Choose a 6-digit PIN.",
+            "info"
+        );
+    }
+}
+
+function resetVaultVisual() {
+    vault.classList.remove(
+        "processing",
+        "unlocked",
+        "success",
+        "error"
+    );
+
+    vault.style.transform = "rotate(0deg)";
+
+    vaultStatus.textContent = "LOCKED";
+    vaultStatus.style.color = "#f5d76e";
+}
+
+function vaultMotion() {
+    vault.classList.remove("error");
+    vault.classList.add("processing");
+
+    vault.style.transform = "rotate(8deg)";
+
+    setTimeout(() => {
+        vault.style.transform = "rotate(-8deg)";
+    }, 130);
+
+    setTimeout(() => {
+        vault.style.transform = "rotate(6deg)";
+    }, 260);
+
+    setTimeout(() => {
+        vault.style.transform = "rotate(-3deg)";
+    }, 390);
+
+    setTimeout(() => {
+        vault.style.transform = "rotate(0deg)";
+
+        vault.classList.remove("processing");
+
+        vault.classList.add(
+            "unlocked",
+            "success"
+        );
+
+        vaultStatus.textContent = "UNLOCKED";
+        vaultStatus.style.color = "#4ade80";
+    }, 600);
+}
+
+function vaultError() {
+    vault.classList.remove("error");
+
+    void vault.offsetWidth;
+
+    vault.classList.add("error");
+
+    setTimeout(() => {
+        vault.classList.remove("error");
+    }, 500);
+}
+
+function dots(id, value) {
+    const container = document.getElementById(id);
+
+    if (!container) {
+        return;
+    }
+
+    container
+        .querySelectorAll(".pin-dot")
+        .forEach((dot, index) => {
+            dot.classList.toggle(
+                "active",
+                index < value.length
+            );
+        });
+}
+
+function validStrongPin(pin) {
+    if (!/^\d{6}$/.test(pin)) {
+        return false;
+    }
+
+    if (/^(\d)\1{5}$/.test(pin)) {
+        return false;
+    }
+
+    const blocked = [
+        "123456",
+        "654321",
+        "000000",
+        "111111",
+        "121212",
+        "112233",
+        "123123",
+        "222222",
+        "333333",
+        "444444",
+        "555555",
+        "666666",
+        "777777",
+        "888888",
+        "999999"
+    ];
+
+    return !blocked.includes(pin);
+}
+
+function addDigit(type, digit) {
+    if (type === "setup") {
+        if (setupPin.length >= 6) {
+            return;
+        }
+
+        setupPin += digit;
+
+        dots(
+            "setupDots",
+            setupPin
+        );
+
+        return;
+    }
+
+    if (type === "confirm") {
+        if (confirmPin.length >= 6) {
+            return;
+        }
+
+        confirmPin += digit;
+
+        dots(
+            "confirmDots",
+            confirmPin
+        );
+
+        return;
+    }
+
+    if (type === "unlock") {
+        if (Date.now() < lockedUntil) {
+            showLockMessage();
+            return;
+        }
+
+        if (unlockPin.length >= 6) {
+            return;
+        }
+
+        unlockPin += digit;
+
+        dots(
+            "unlockDots",
+            unlockPin
+        );
+    }
+}
+
+function clearDigit(type) {
+    if (type === "setup") {
+        setupPin = setupPin.slice(0, -1);
+
+        dots(
+            "setupDots",
+            setupPin
+        );
+    }
+
+    if (type === "confirm") {
+        confirmPin = confirmPin.slice(0, -1);
+
+        dots(
+            "confirmDots",
+            confirmPin
+        );
+    }
+
+    if (type === "unlock") {
+        unlockPin = unlockPin.slice(0, -1);
+
+        dots(
+            "unlockDots",
+            unlockPin
+        );
+    }
+}
+
+function createVault() {
+    if (setupPin.length !== 6) {
+        return;
+    }
+
+    if (!validStrongPin(setupPin)) {
+        message(
+            setupMessage,
+            "Choose a stronger 6-digit PIN.",
+            "error"
+        );
+
+        vaultError();
+
+        setupPin = "";
+
+        dots(
+            "setupDots",
+            ""
+        );
+
+        return;
+    }
+
+    showScreen(confirmScreen);
+
+    confirmPin = "";
+
+    dots(
+        "confirmDots",
+        ""
+    );
+
+    message(
+        confirmMessage,
+        "Enter the same PIN again.",
+        "info"
+    );
+}
+
+async function confirmVault() {
+    if (confirmPin.length !== 6) {
+        return;
+    }
+
+    if (confirmPin !== setupPin) {
+        message(
+            confirmMessage,
+            "The PINs do not match.",
+            "error"
+        );
+
+        vaultError();
+
+        confirmPin = "";
+
+        dots(
+            "confirmDots",
+            ""
+        );
+
+        return;
+    }
+
+    try {
+        message(
+            confirmMessage,
+            "Securing your vault...",
+            "info"
+        );
+
+        const data = await api(
+            "/api/vault/create",
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    pin: setupPin
+                })
+            }
+        );
+
+        if (!data.success) {
+            throw new Error(
+                data.message ||
+                "Unable to create vault."
+            );
+        }
+
+        vaultMotion();
+
+        message(
+            confirmMessage,
+            "Vault created successfully.",
+            "success"
+        );
+
+        setupPin = "";
+        confirmPin = "";
+
+        dots(
+            "setupDots",
+            ""
+        );
+
+        dots(
+            "confirmDots",
+            ""
+        );
+
+        setTimeout(() => {
+            resetVaultVisual();
+
+            showScreen(unlockScreen);
+
+            message(
+                unlockMessage,
+                "Your vault is ready.",
+                "success"
+            );
+        }, 1600);
+
+    } catch (error) {
+        console.error(
+            "Vault creation error:",
+            error
+        );
+
+        message(
+            confirmMessage,
+            error.message ||
+            "Unable to create vault.",
+            "error"
+        );
+    }
+}
+
+function showLockMessage() {
+    const seconds = Math.max(
+        1,
+        Math.ceil(
+            (lockedUntil - Date.now()) / 1000
+        )
+    );
+
+    message(
+        unlockMessage,
+        `Vault temporarily locked. Try again in ${seconds} seconds.`,
+        "error"
+    );
+}
+
+async function unlock() {
+    if (unlockPin.length !== 6) {
+        return;
+    }
+
+    if (Date.now() < lockedUntil) {
+        showLockMessage();
+
+        unlockPin = "";
+
+        dots(
+            "unlockDots",
+            ""
+        );
+
+        return;
+    }
+
+    try {
+        message(
+            unlockMessage,
+            "Checking your PIN...",
+            "info"
+        );
+
+        const data = await api(
+            "/api/vault/unlock",
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    pin: unlockPin
+                })
+            }
+        );
+
+        if (!data.success) {
+            failedAttempts++;
+
+            unlockPin = "";
+
+            dots(
+                "unlockDots",
+                ""
+            );
+
+            vaultError();
+
+            if (failedAttempts >= 5) {
+                failedAttempts = 0;
+
+                lockedUntil =
+                    Date.now() + 60000;
+
+                message(
+                    unlockMessage,
+                    "Too many incorrect attempts. Vault locked for 60 seconds.",
+                    "error"
+                );
+
+                return;
+            }
+
+            const left =
+                5 - failedAttempts;
+
+            message(
+                unlockMessage,
+                `Incorrect PIN. ${left} attempt${left === 1 ? "" : "s"} remaining.`,
+                "error"
+            );
+
+            return;
+        }
+
+        failedAttempts = 0;
+
+        message(
+            unlockMessage,
+            "Vault unlocked. Opening your account...",
+            "success"
+        );
+
+        vaultMotion();
+
+        setTimeout(() => {
+            window.location.href = DASHBOARD_URL;
+        }, 1800);
+
+    } catch (error) {
+        console.error(
+            "Unlock error:",
+            error
+        );
+
+        unlockPin = "";
+
+        dots(
+            "unlockDots",
+            ""
+        );
+
+        message(
+            unlockMessage,
+            error.message ||
+            "Unable to unlock the vault.",
+            "error"
+        );
+
+        vaultError();
+    }
+}
+
+function openForgot() {
+    showScreen(forgotScreen);
+
+    resetEmailDisplay.textContent =
+        account?.email ||
+        getStoredEmail() ||
+        "Verified account email";
+
+    message(
+        forgotMessage,
+        "A verification code will be sent to your registered email.",
+        "info"
+    );
+}
+
+async function sendCode() {
+    if (!account?.email && !getStoredEmail()) {
+        message(
+            forgotMessage,
+            "Your account email could not be verified.",
+            "error"
+        );
+
+        return false;
+    }
+
+    sendResetButton.disabled = true;
+
+    message(
+        forgotMessage,
+        "Sending verification code...",
+        "info"
+    );
+
+    try {
+        const data = await api(
+            "/api/vault/send-reset-code",
+            {
+                method: "POST",
+                body: JSON.stringify({})
+            }
+        );
+
+        if (!data.success) {
+            throw new Error(
+                data.message ||
+                "Unable to send verification code."
+            );
+        }
+
+        message(
+            forgotMessage,
+            "Verification code sent to your registered email.",
+            "success"
+        );
+
+        setTimeout(() => {
+            codeEmail.textContent =
+                account?.email ||
+                getStoredEmail();
+
+            showScreen(resetScreen);
+
+            message(
+                resetMessage,
+                "Enter the 6-digit code sent to your email.",
+                "info"
+            );
+
+            resetCode.value = "";
+
+            resetCode.focus();
+        }, 700);
+
+        return true;
+
+    } catch (error) {
+        console.error(
+            "Reset code error:",
+            error
+        );
+
+        message(
+            forgotMessage,
+            error.message ||
+            "Unable to send verification code.",
+            "error"
+        );
+
+        return false;
+
+    } finally {
+        sendResetButton.disabled = false;
+    }
+}
+
+async function verifyCode() {
+    const code =
+        resetCode.value.trim();
+
+    if (!/^\d{6}$/.test(code)) {
+        message(
+            resetMessage,
+            "Enter the complete 6-digit verification code.",
+            "error"
+        );
+
+        return;
+    }
+
+    verifyCodeButton.disabled = true;
+
+    message(
+        resetMessage,
+        "Verifying your code...",
+        "info"
+    );
+
+    try {
+        const data = await api(
+            "/api/vault/verify-reset-code",
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    code
+                })
+            }
+        );
+
+        if (!data.success || !data.verified) {
+            throw new Error(
+                data.message ||
+                "Invalid verification code."
+            );
+        }
+
+        showScreen(newPinScreen);
+
+        message(
+            newPinMessage,
+            "Email verified. Create your new vault PIN.",
+            "success"
+        );
+
+        newPin.focus();
+
+    } catch (error) {
+        console.error(
+            "Verification error:",
+            error
+        );
+
+        message(
+            resetMessage,
+            error.message ||
+            "Unable to verify your code.",
+            "error"
+        );
+
+    } finally {
+        verifyCodeButton.disabled = false;
+    }
+}
+
+async function resetVaultPin() {
+    const pin =
+        newPin.value.trim();
+
+    const confirm =
+        confirmNewPin.value.trim();
+
+    if (!validStrongPin(pin)) {
+        message(
+            newPinMessage,
+            "Choose a stronger 6-digit PIN.",
+            "error"
+        );
+
+        return;
+    }
+
+    if (pin !== confirm) {
+        message(
+            newPinMessage,
+            "The new PINs do not match.",
+            "error"
+        );
+
+        return;
+    }
+
+    resetPinButton.disabled = true;
+
+    message(
+        newPinMessage,
+        "Securing your new vault PIN...",
+        "info"
+    );
+
+    try {
+        const data = await api(
+            "/api/vault/reset-pin",
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    pin
+                })
+            }
+        );
+
+        if (!data.success) {
+            throw new Error(
+                data.message ||
+                "Unable to reset vault PIN."
+            );
+        }
+
+        newPin.value = "";
+        confirmNewPin.value = "";
+        resetCode.value = "";
+
+        failedAttempts = 0;
+        lockedUntil = 0;
+
+        message(
+            newPinMessage,
+            "Vault PIN reset successfully.",
+            "success"
+        );
+
+        vaultMotion();
+
+        setTimeout(() => {
+            resetVaultVisual();
+
+            unlockPin = "";
+
+            dots(
+                "unlockDots",
+                ""
+            );
+
+            showScreen(unlockScreen);
+
+            message(
+                unlockMessage,
+                "Your new vault PIN is ready.",
+                "success"
+            );
+        }, 1600);
+
+    } catch (error) {
+        console.error(
+            "PIN reset error:",
+            error
+        );
+
+        message(
+            newPinMessage,
+            error.message ||
+            "Unable to reset vault PIN.",
+            "error"
+        );
+
+    } finally {
+        resetPinButton.disabled = false;
+    }
+}
+
+async function resendCode() {
+    if (resendTimer > 0) {
+        message(
+            resetMessage,
+            `Please wait ${resendTimer} seconds before requesting another code.`,
+            "info"
+        );
+
+        return;
+    }
+
+    const sent =
+        await sendCode();
+
+    if (sent) {
+        startResendTimer();
+    }
+}
+
+function startResendTimer() {
+    if (resendInterval) {
+        clearInterval(resendInterval);
+    }
+
+    resendTimer = 60;
+
+    resendButton.disabled = true;
+
+    resendButton.textContent =
+        `Resend Code (${resendTimer}s)`;
+
+    resendInterval =
+        setInterval(() => {
+            resendTimer--;
+
+            if (resendTimer <= 0) {
+                clearInterval(resendInterval);
+
+                resendInterval = null;
+
+                resendButton.disabled = false;
+
+                resendButton.textContent =
+                    "Resend Code";
+
+                return;
+            }
+
+            resendButton.textContent =
+                `Resend Code (${resendTimer}s)`;
+
+        }, 1000);
+}
+
+document.addEventListener(
+    "click",
+    event => {
+        const key =
+            event.target.closest(".key");
+
+        if (!key) {
+            return;
+        }
+
+        const digit =
+            key.dataset.key;
+
+        const action =
+            key.dataset.action;
+
+        if (!setupScreen.classList.contains("hidden")) {
+            if (digit) {
+                addDigit(
+                    "setup",
+                    digit
+                );
+            }
+
+            if (action === "clear") {
+                clearDigit("setup");
+            }
+
+            if (
+                action === "enter" &&
+                setupPin.length === 6
+            ) {
+                createVault();
+            }
+
+            return;
+        }
+
+        if (!confirmScreen.classList.contains("hidden")) {
+            if (digit) {
+                addDigit(
+                    "confirm",
+                    digit
+                );
+            }
+
+            if (action === "clear") {
+                clearDigit("confirm");
+            }
+
+            if (
+                action === "enter" &&
+                confirmPin.length === 6
+            ) {
+                confirmVault();
+            }
+
+            return;
+        }
+
+        if (!unlockScreen.classList.contains("hidden")) {
+            if (digit) {
+                addDigit(
+                    "unlock",
+                    digit
+                );
+            }
+
+            if (action === "clear") {
+                clearDigit("unlock");
+            }
+
+            if (
+                action === "enter" &&
+                unlockPin.length === 6
+            ) {
+                unlock();
+            }
+        }
+    }
+);
+
+document.addEventListener(
+    "keydown",
+    event => {
+        if (/^\d$/.test(event.key)) {
+            if (!setupScreen.classList.contains("hidden")) {
+                addDigit(
+                    "setup",
+                    event.key
+                );
+            } else if (!confirmScreen.classList.contains("hidden")) {
+                addDigit(
+                    "confirm",
+                    event.key
+                );
+            } else if (!unlockScreen.classList.contains("hidden")) {
+                addDigit(
+                    "unlock",
+                    event.key
+                );
+            }
+        }
+
+        if (event.key === "Backspace") {
+            if (!setupScreen.classList.contains("hidden")) {
+                clearDigit("setup");
+            } else if (!confirmScreen.classList.contains("hidden")) {
+                clearDigit("confirm");
+            } else if (!unlockScreen.classList.contains("hidden")) {
+                clearDigit("unlock");
+            }
+        }
+
+        if (event.key === "Enter") {
+            if (
+                !setupScreen.classList.contains("hidden") &&
+                setupPin.length === 6
+            ) {
+                createVault();
+            } else if (
+                !confirmScreen.classList.contains("hidden") &&
+                confirmPin.length === 6
+            ) {
+                confirmVault();
+            } else if (
+                !unlockScreen.classList.contains("hidden") &&
+                unlockPin.length === 6
+            ) {
+                unlock();
+            }
+        }
+    }
+);
+
+forgotButton.addEventListener(
+    "click",
+    openForgot
+);
+
+backToUnlock.addEventListener(
+    "click",
+    () => {
+        showScreen(unlockScreen);
+
+        unlockPin = "";
+
+        dots(
+            "unlockDots",
+            ""
+        );
+
+        message(
+            unlockMessage,
+            "Enter your vault PIN.",
+            "info"
+        );
+    }
+);
+
+backToForgot.addEventListener(
+    "click",
+    () => {
+        showScreen(forgotScreen);
+
+        message(
+            forgotMessage,
+            "A verification code will be sent to your registered email.",
+            "info"
+        );
+    }
+);
+
+backToVerify.addEventListener(
+    "click",
+    () => {
+        showScreen(resetScreen);
+
+        message(
+            resetMessage,
+            "Enter the verification code sent to your email.",
+            "info"
+        );
+
+        resetCode.focus();
+    }
+);
+
+sendResetButton.addEventListener(
+    "click",
+    sendCode
+);
+
+verifyCodeButton.addEventListener(
+    "click",
+    verifyCode
+);
+
+resetPinButton.addEventListener(
+    "click",
+    resetVaultPin
+);
+
+resendButton.addEventListener(
+    "click",
+    resendCode
+);
+
+resetCode.addEventListener(
+    "input",
+    () => {
+        resetCode.value =
+            resetCode.value
+                .replace(/\D/g, "")
+                .slice(0, 6);
+    }
+);
+
+newPin.addEventListener(
+    "input",
+    () => {
+        newPin.value =
+            newPin.value
+                .replace(/\D/g, "")
+                .slice(0, 6);
+    }
+);
+
+confirmNewPin.addEventListener(
+    "input",
+    () => {
+        confirmNewPin.value =
+            confirmNewPin.value
+                .replace(/\D/g, "")
+                .slice(0, 6);
+    }
+);
+
+setInterval(
+    () => {
+        if (
+            lockedUntil &&
+            Date.now() >= lockedUntil
+        ) {
+            lockedUntil = 0;
+
+            if (
+                !unlockScreen.classList.contains("hidden")
+            ) {
+                message(
+                    unlockMessage,
+                    "Vault ready. Enter your PIN.",
+                    "info"
+                );
+            }
+        }
+    },
+    1000
+);
+
+loadAccount();
+</script>
+
+</body>
+</html>

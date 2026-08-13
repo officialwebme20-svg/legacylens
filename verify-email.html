@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Verify your email address - Legacy Lens AI">
+    <title>Verify Your Email | Legacy Lens AI</title>
+    <link rel="stylesheet" href="verify-email.css">
+</head>
+
+<body>
+
+    <main class="verification-page">
+
+        <section class="verification-card" aria-labelledby="verificationTitle">
+
+            <div class="brand">
+                <div class="brand-icon">L</div>
+                <span>Legacy Lens AI</span>
+            </div>
+
+            <div class="verification-icon">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                    <rect x="8" y="16" width="48" height="36" rx="8"></rect>
+                    <path d="M10 20l22 18 22-18"></path>
+                    <path d="M10 48l15-14"></path>
+                    <path d="M54 48L39 34"></path>
+                </svg>
+            </div>
+
+            <div class="verification-header">
+                <span class="eyebrow">SECURITY CHECK</span>
+
+                <h1 id="verificationTitle">
+                    Verify your email
+                </h1>
+
+                <p>
+                    We've sent a 6-digit verification code to
+                    <strong id="emailDisplay">your email address</strong>.
+                </p>
+            </div>
+
+            <div id="authMessage" class="auth-message" role="alert" hidden></div>
+
+            <form id="verificationForm" novalidate>
+
+                <div class="form-group">
+                    <label for="verificationCode">
+                        Verification code
+                    </label>
+
+                    <div class="code-input-wrapper">
+                        <input
+                            type="text"
+                            id="verificationCode"
+                            name="verificationCode"
+                            inputmode="numeric"
+                            autocomplete="one-time-code"
+                            maxlength="6"
+                            placeholder="000000"
+                            aria-describedby="codeError"
+                            required
+                        >
+                    </div>
+
+                    <div
+                        id="codeError"
+                        class="field-error"
+                        aria-live="polite"
+                    ></div>
+                </div>
+
+                <button
+                    type="submit"
+                    id="verifyButton"
+                    class="primary-button"
+                >
+                    <span class="button-text">
+                        Verify email
+                    </span>
+
+                    <span class="button-loader" aria-hidden="true"></span>
+                </button>
+
+            </form>
+
+            <div class="verification-footer">
+
+                <p id="codeTimer">
+                    Code expires in <strong>10:00</strong>
+                </p>
+
+                <button
+                    type="button"
+                    id="resendCode"
+                    class="resend-button"
+                    disabled
+                >
+                    Resend code
+                </button>
+
+            </div>
+
+            <div class="change-email">
+                <button
+                    type="button"
+                    id="changeEmail"
+                    class="text-button"
+                >
+                    Use a different email
+                </button>
+            </div>
+
+            <div class="security-note">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3l7 3v5c0 4.8-3 8.4-7 10-4-1.6-7-5.2-7-10V6l7-3z"></path>
+                    <path d="M9 12l2 2 4-4"></path>
+                </svg>
+
+                <span>
+                    Never share your verification code with anyone.
+                </span>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script type="module" src="verify-email.js"></script>
+
+</body>
+</html>
