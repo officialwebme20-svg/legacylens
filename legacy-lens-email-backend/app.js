@@ -56,11 +56,13 @@ app.disable("x-powered-by");
 
 app.set("trust proxy", 1);
 
+
 app.use(
     helmet({
         crossOriginResourcePolicy: false
     })
 );
+
 
 app.use(
     cors({
@@ -82,11 +84,13 @@ app.use(
     })
 );
 
+
 app.use(
     express.json({
         limit: "15mb"
     })
 );
+
 
 app.use(
     express.urlencoded({
@@ -94,6 +98,7 @@ app.use(
         limit: "15mb"
     })
 );
+
 
 app.use(
     (req, res, next) => {
@@ -123,6 +128,7 @@ const databaseFile =
         "database.json"
     );
 
+
 if (
     !fs.existsSync(
         dataDirectory
@@ -136,6 +142,7 @@ if (
         }
     );
 }
+
 
 if (
     !fs.existsSync(
@@ -183,9 +190,7 @@ function readDatabase() {
 }
 
 
-function writeDatabase(
-    database
-) {
+function writeDatabase(database) {
 
     const temporaryFile =
         `${databaseFile}.tmp`;
@@ -213,17 +218,15 @@ function writeDatabase(
 const otpRequests =
     new Map();
 
-const pinResetRequests =
+const vaultResetRequests =
     new Map();
 
 
 /* =========================================================
-   GENERAL HELPERS
+   HELPERS
 ========================================================= */
 
-function normalizeEmail(
-    email
-) {
+function normalizeEmail(email) {
 
     return String(
         email || ""
@@ -233,9 +236,7 @@ function normalizeEmail(
 }
 
 
-function validEmail(
-    email
-) {
+function validEmail(email) {
 
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         .test(email);
@@ -253,9 +254,7 @@ function generateOTP() {
 }
 
 
-function hashOTP(
-    code
-) {
+function hashOTP(code) {
 
     return crypto
         .createHash("sha256")
@@ -274,9 +273,7 @@ function generateToken() {
 }
 
 
-function hashToken(
-    token
-) {
+function hashToken(token) {
 
     return crypto
         .createHash("sha256")
@@ -287,98 +284,7 @@ function hashToken(
 }
 
 
-/* =========================================================
-   PIN HELPERS
-========================================================= */
-
-function validPIN(
-    pin
-) {
-
-    return /^\d{4,6}$/.test(
-        String(pin || "")
-    );
-}
-
-
-function hashPIN(
-    pin
-) {
-
-    const salt =
-        crypto.randomBytes(16);
-
-    const hash =
-        crypto.scryptSync(
-            String(pin),
-            salt,
-            64
-        );
-
-    return {
-        salt:
-            salt.toString("hex"),
-
-        hash:
-            hash.toString("hex")
-    };
-}
-
-
-function verifyPIN(
-    pin,
-    stored
-) {
-
-    if (
-        !stored ||
-        !stored.salt ||
-        !stored.hash
-    ) {
-
-        return false;
-    }
-
-    try {
-
-        const salt =
-            Buffer.from(
-                stored.salt,
-                "hex"
-            );
-
-        const storedHash =
-            Buffer.from(
-                stored.hash,
-                "hex"
-            );
-
-        const calculatedHash =
-            crypto.scryptSync(
-                String(pin),
-                salt,
-                64
-            );
-
-        return crypto.timingSafeEqual(
-            storedHash,
-            calculatedHash
-        );
-
-    } catch {
-
-        return false;
-    }
-}
-
-
-/* =========================================================
-   IMAGE VALIDATION
-========================================================= */
-
-function validateImage(
-    image
-) {
+function validateImage(image) {
 
     if (
         typeof image !==
@@ -387,6 +293,7 @@ function validateImage(
 
         return false;
     }
+
 
     if (
         !image.startsWith(
@@ -397,6 +304,7 @@ function validateImage(
         return false;
     }
 
+
     if (
         image.length >
         12 * 1024 * 1024
@@ -405,7 +313,125 @@ function validateImage(
         return false;
     }
 
+
     return true;
+}
+
+
+/* =========================================================
+   PIN HELPERS
+========================================================= */
+
+/*
+ * Vault PIN rules:
+ *
+ * - Exactly 4 to 8 digits
+ * - Numbers only
+ *
+ * Change this if you want a different PIN length.
+ */
+
+function validPIN(pin) {
+
+    return /^\d{4,8}$/
+        .test(
+            String(pin || "")
+        );
+}
+
+
+/*
+ * PINs are never stored as plain text.
+ *
+ * crypto.scryptSync creates a strong password-derived
+ * hash using a random salt.
+ */
+
+function hashPIN(pin) {
+
+    const salt =
+        crypto.randomBytes(16);
+
+    const derivedKey =
+        crypto.scryptSync(
+            String(pin),
+            salt,
+            64
+        );
+
+    return {
+        algorithm: "scrypt",
+
+        salt:
+            salt.toString("hex"),
+
+        hash:
+            derivedKey.toString("hex")
+    };
+}
+
+
+function verifyPIN(pin, storedPIN) {
+
+    try {
+
+        if (
+            !storedPIN ||
+            storedPIN.algorithm !==
+            "scrypt" ||
+            !storedPIN.salt ||
+            !storedPIN.hash
+        ) {
+
+            return false;
+        }
+
+
+        const salt =
+            Buffer.from(
+                storedPIN.salt,
+                "hex"
+            );
+
+
+        const expected =
+            Buffer.from(
+                storedPIN.hash,
+                "hex"
+            );
+
+
+        const actual =
+            crypto.scryptSync(
+                String(pin),
+                salt,
+                expected.length
+            );
+
+
+        if (
+            actual.length !==
+            expected.length
+        ) {
+
+            return false;
+        }
+
+
+        return crypto.timingSafeEqual(
+            actual,
+            expected
+        );
+
+    } catch (error) {
+
+        console.error(
+            "PIN verification error:",
+            error
+        );
+
+        return false;
+    }
 }
 
 
@@ -419,8 +445,7 @@ app.get(
 
         res.json({
 
-            success:
-                true,
+            success: true,
 
             service:
                 "Legacy Lens AI",
@@ -436,7 +461,7 @@ app.get(
     "/api/health",
     (req, res) => {
 
-        res.json({
+        return res.json({
 
             success:
                 true,
@@ -463,10 +488,7 @@ app.get(
             authentication:
                 "enabled",
 
-            pinSecurity:
-                "enabled",
-
-            pinReset:
+            vault:
                 "enabled",
 
             persistentDatabase:
@@ -498,74 +520,6 @@ const sendCodeLimiter =
 
 
 const verifyCodeLimiter =
-    rateLimit({
-
-        windowMs:
-            15 * 60 * 1000,
-
-        max:
-            10,
-
-        standardHeaders:
-            true,
-
-        legacyHeaders:
-            false
-    });
-
-
-const pinCreateLimiter =
-    rateLimit({
-
-        windowMs:
-            15 * 60 * 1000,
-
-        max:
-            10,
-
-        standardHeaders:
-            true,
-
-        legacyHeaders:
-            false
-    });
-
-
-const pinLoginLimiter =
-    rateLimit({
-
-        windowMs:
-            15 * 60 * 1000,
-
-        max:
-            10,
-
-        standardHeaders:
-            true,
-
-        legacyHeaders:
-            false
-    });
-
-
-const pinResetRequestLimiter =
-    rateLimit({
-
-        windowMs:
-            15 * 60 * 1000,
-
-        max:
-            5,
-
-        standardHeaders:
-            true,
-
-        legacyHeaders:
-            false
-    });
-
-
-const pinResetLimiter =
     rateLimit({
 
         windowMs:
@@ -616,6 +570,91 @@ const faceLoginLimiter =
     });
 
 
+const vaultCreateLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            10,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
+const vaultVerifyLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            20,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
+const vaultChangeLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            10,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
+const vaultForgotLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            5,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
+const vaultResetLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            10,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
 /* =========================================================
    OTP CLEANUP
 ========================================================= */
@@ -624,6 +663,7 @@ function cleanupExpiredOTPs() {
 
     const now =
         Date.now();
+
 
     for (
         const [
@@ -635,7 +675,8 @@ function cleanupExpiredOTPs() {
 
         if (
             !data ||
-            data.expiresAt <= now
+            data.expiresAt <=
+            now
         ) {
 
             otpRequests.delete(
@@ -644,20 +685,22 @@ function cleanupExpiredOTPs() {
         }
     }
 
+
     for (
         const [
             email,
             data
         ]
-        of pinResetRequests.entries()
+        of vaultResetRequests.entries()
     ) {
 
         if (
             !data ||
-            data.expiresAt <= now
+            data.expiresAt <=
+            now
         ) {
 
-            pinResetRequests.delete(
+            vaultResetRequests.delete(
                 email
             );
         }
@@ -677,7 +720,8 @@ setInterval(
 
 async function sendVerificationEmail({
     email,
-    code
+    code,
+    purpose = "account"
 }) {
 
     if (!brevo) {
@@ -687,12 +731,26 @@ async function sendVerificationEmail({
         );
     }
 
+
     if (!EMAIL_FROM) {
 
         throw new Error(
             "Email sender is not configured."
         );
     }
+
+
+    const subject =
+        purpose === "vault"
+            ? "Your Legacy Lens AI Vault Reset Code"
+            : "Your Legacy Lens AI Verification Code";
+
+
+    const title =
+        purpose === "vault"
+            ? "Vault Security Verification"
+            : "Security Verification";
+
 
     const emailData = {
 
@@ -705,6 +763,7 @@ async function sendVerificationEmail({
                 EMAIL_FROM_NAME
         },
 
+
         to: [
 
             {
@@ -713,14 +772,24 @@ async function sendVerificationEmail({
 
         ],
 
-        subject:
-            "Your Legacy Lens AI Verification Code",
+
+        subject,
+
 
         htmlContent: `
 
 <!DOCTYPE html>
 
 <html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width,initial-scale=1">
+
+</head>
 
 <body
 style="
@@ -748,16 +817,22 @@ padding:40px 30px;
 style="
 text-align:center;
 color:#111827;
+margin-bottom:10px;
 ">
+
 Legacy Lens AI
+
 </h1>
 
 <p
 style="
 text-align:center;
 color:#64748b;
+margin-top:0;
 ">
-Security Verification
+
+${title}
+
 </p>
 
 <div
@@ -769,8 +844,14 @@ padding:30px;
 text-align:center;
 ">
 
-<p>
+<p
+style="
+color:#334155;
+font-size:16px;
+">
+
 Your verification code is:
+
 </p>
 
 <div
@@ -779,15 +860,32 @@ font-size:40px;
 font-weight:700;
 letter-spacing:10px;
 color:#111827;
+margin:20px 0;
 ">
+
 ${code}
+
 </div>
 
 <p
 style="
 color:#64748b;
+font-size:14px;
 ">
+
 This code expires in 10 minutes.
+
+</p>
+
+<p
+style="
+color:#64748b;
+font-size:13px;
+">
+
+If you did not request this code,
+you can safely ignore this email.
+
 </p>
 
 </div>
@@ -806,13 +904,19 @@ This code expires in 10 minutes.
 `
 Legacy Lens AI
 
+${title}
+
 Your verification code is:
 
 ${code}
 
 This code expires in 10 minutes.
+
+If you did not request this code,
+you can safely ignore this email.
 `
     };
+
 
     return await brevo
         .transactionalEmails
@@ -823,174 +927,7 @@ This code expires in 10 minutes.
 
 
 /* =========================================================
-   SEND PIN RESET EMAIL
-========================================================= */
-
-async function sendPINResetEmail({
-    email,
-    code
-}) {
-
-    if (!brevo) {
-
-        throw new Error(
-            "Brevo email service is not configured."
-        );
-    }
-
-    if (!EMAIL_FROM) {
-
-        throw new Error(
-            "Email sender is not configured."
-        );
-    }
-
-    const emailData = {
-
-        sender: {
-
-            email:
-                EMAIL_FROM,
-
-            name:
-                EMAIL_FROM_NAME
-        },
-
-        to: [
-
-            {
-                email
-            }
-
-        ],
-
-        subject:
-            "Your Legacy Lens AI PIN Reset Code",
-
-        htmlContent: `
-
-<!DOCTYPE html>
-
-<html>
-
-<body
-style="
-margin:0;
-padding:0;
-background:#f3f6fa;
-font-family:Arial,Helvetica,sans-serif;
-">
-
-<div
-style="
-max-width:600px;
-margin:40px auto;
-padding:20px;
-">
-
-<div
-style="
-background:#ffffff;
-border-radius:20px;
-padding:40px 30px;
-">
-
-<h1
-style="
-text-align:center;
-color:#111827;
-">
-Legacy Lens AI
-</h1>
-
-<p
-style="
-text-align:center;
-color:#64748b;
-">
-PIN Reset
-</p>
-
-<div
-style="
-margin-top:30px;
-background:#f8fafc;
-border-radius:16px;
-padding:30px;
-text-align:center;
-">
-
-<p>
-Someone requested to reset your security PIN.
-</p>
-
-<p>
-Your PIN reset verification code is:
-</p>
-
-<div
-style="
-font-size:40px;
-font-weight:700;
-letter-spacing:10px;
-color:#111827;
-">
-${code}
-</div>
-
-<p
-style="
-color:#64748b;
-">
-This code expires in 10 minutes.
-</p>
-
-<p
-style="
-color:#ef4444;
-font-weight:600;
-">
-If you did not request this reset, ignore this email.
-</p>
-
-</div>
-
-</div>
-
-</div>
-
-</body>
-
-</html>
-
-`,
-
-        textContent:
-`
-Legacy Lens AI
-
-Someone requested to reset your security PIN.
-
-Your PIN reset verification code is:
-
-${code}
-
-This code expires in 10 minutes.
-
-If you did not request this reset, ignore this email.
-`
-    };
-
-    return await brevo
-        .transactionalEmails
-        .sendTransacEmail(
-            emailData
-        );
-}
-
-
-/* =========================================================
-   SEND EMAIL VERIFICATION CODE
+   SEND ACCOUNT VERIFICATION CODE
 ========================================================= */
 
 app.post(
@@ -1004,6 +941,7 @@ app.post(
                 normalizeEmail(
                     req.body?.email
                 );
+
 
             if (
                 !validEmail(email)
@@ -1024,10 +962,12 @@ app.post(
                     });
             }
 
+
             const existing =
                 otpRequests.get(
                     email
                 );
+
 
             if (
                 existing &&
@@ -1051,8 +991,10 @@ app.post(
                     });
             }
 
+
             const code =
                 generateOTP();
+
 
             otpRequests.set(
                 email,
@@ -1073,11 +1015,14 @@ app.post(
                 }
             );
 
+
             try {
 
                 await sendVerificationEmail({
                     email,
-                    code
+                    code,
+                    purpose:
+                        "account"
                 });
 
             } catch (error) {
@@ -1088,6 +1033,7 @@ app.post(
 
                 throw error;
             }
+
 
             return res.json({
 
@@ -1101,12 +1047,14 @@ app.post(
                     "Verification code sent successfully."
             });
 
+
         } catch (error) {
 
             console.error(
                 "Send code error:",
                 error
             );
+
 
             return res
                 .status(500)
@@ -1127,7 +1075,7 @@ app.post(
 
 
 /* =========================================================
-   VERIFY EMAIL CODE
+   VERIFY ACCOUNT CODE
 ========================================================= */
 
 app.post(
@@ -1142,16 +1090,39 @@ app.post(
                     req.body?.email
                 );
 
+
             const code =
                 String(
                     req.body?.code ||
                     ""
                 ).trim();
 
+
+            if (
+                !validEmail(email)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Invalid email address."
+                    });
+            }
+
+
             const stored =
                 otpRequests.get(
                     email
                 );
+
 
             if (!stored) {
 
@@ -1169,6 +1140,7 @@ app.post(
                             "Invalid or expired verification code."
                     });
             }
+
 
             if (
                 Date.now() >
@@ -1194,6 +1166,7 @@ app.post(
                     });
             }
 
+
             if (
                 stored.attempts >=
                 5
@@ -1218,8 +1191,10 @@ app.post(
                     });
             }
 
+
             const submittedHash =
                 hashOTP(code);
+
 
             if (
                 submittedHash !==
@@ -1243,8 +1218,10 @@ app.post(
                     });
             }
 
+
             const database =
                 readDatabase();
+
 
             if (
                 !database.users[email]
@@ -1261,31 +1238,33 @@ app.post(
                     faceRegistered:
                         false,
 
-                    pinCreated:
-                        false
+                    vaultPIN:
+                        null
                 };
 
             } else {
 
-                database.users[email]
-                    .emailVerified = true;
+                if (
+                    typeof database.users[email]
+                        .vaultPIN ===
+                    "undefined"
+                ) {
+
+                    database.users[email]
+                        .vaultPIN = null;
+                }
             }
 
-            database.users[email]
-                .emailVerified = true;
-
-            database.users[email]
-                .emailVerifiedAt =
-                    new Date()
-                        .toISOString();
 
             writeDatabase(
                 database
             );
 
+
             otpRequests.delete(
                 email
             );
+
 
             return res.json({
 
@@ -1301,12 +1280,14 @@ app.post(
                     "Email verified successfully."
             });
 
+
         } catch (error) {
 
             console.error(
                 "Verify code error:",
                 error
             );
+
 
             return res
                 .status(500)
@@ -1320,899 +1301,6 @@ app.post(
 
                     message:
                         "Verification failed."
-                });
-        }
-    }
-);
-
-
-/* =========================================================
-   PIN CREATE
-========================================================= */
-
-app.post(
-    "/api/pin/create",
-    pinCreateLimiter,
-    async (req, res) => {
-
-        try {
-
-            const email =
-                normalizeEmail(
-                    req.body?.email
-                );
-
-            const pin =
-                String(
-                    req.body?.pin ||
-                    ""
-                ).trim();
-
-            const confirmPIN =
-                String(
-                    req.body?.confirmPin ||
-                    ""
-                ).trim();
-
-            if (
-                !validEmail(email)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        created:
-                            false,
-
-                        message:
-                            "Invalid email address."
-                    });
-            }
-
-            if (
-                !validPIN(pin)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        created:
-                            false,
-
-                        message:
-                            "PIN must contain 4 to 6 digits."
-                    });
-            }
-
-            if (
-                pin !==
-                confirmPIN
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        created:
-                            false,
-
-                        message:
-                            "PINs do not match."
-                    });
-            }
-
-            const database =
-                readDatabase();
-
-            const user =
-                database.users[email];
-
-            if (!user) {
-
-                return res
-                    .status(404)
-                    .json({
-
-                        success:
-                            false,
-
-                        created:
-                            false,
-
-                        message:
-                            "Account not found. Verify your email first."
-                    });
-            }
-
-            if (
-                user.pinCreated
-            ) {
-
-                return res
-                    .status(409)
-                    .json({
-
-                        success:
-                            false,
-
-                        created:
-                            false,
-
-                        message:
-                            "A PIN already exists for this account. Use PIN reset instead."
-                    });
-            }
-
-            const pinData =
-                hashPIN(pin);
-
-            user.pinHash =
-                pinData.hash;
-
-            user.pinSalt =
-                pinData.salt;
-
-            user.pinCreated =
-                true;
-
-            user.pinCreatedAt =
-                new Date()
-                    .toISOString();
-
-            writeDatabase(
-                database
-            );
-
-            return res.json({
-
-                success:
-                    true,
-
-                created:
-                    true,
-
-                message:
-                    "Your PIN has been created successfully."
-            });
-
-        } catch (error) {
-
-            console.error(
-                "PIN create error:",
-                error
-            );
-
-            return res
-                .status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    created:
-                        false,
-
-                    message:
-                        "Unable to create PIN."
-                });
-        }
-    }
-);
-
-
-/* =========================================================
-   PIN STATUS
-========================================================= */
-
-app.post(
-    "/api/pin/status",
-    async (req, res) => {
-
-        try {
-
-            const email =
-                normalizeEmail(
-                    req.body?.email
-                );
-
-            if (
-                !validEmail(email)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        message:
-                            "Invalid email address."
-                    });
-            }
-
-            const database =
-                readDatabase();
-
-            const user =
-                database.users[email];
-
-            return res.json({
-
-                success:
-                    true,
-
-                pinCreated:
-                    Boolean(
-                        user &&
-                        user.pinCreated
-                    )
-            });
-
-        } catch (error) {
-
-            console.error(
-                "PIN status error:",
-                error
-            );
-
-            return res
-                .status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    message:
-                        "Unable to check PIN status."
-                });
-        }
-    }
-);
-
-
-/* =========================================================
-   PIN VERIFY
-========================================================= */
-
-app.post(
-    "/api/pin/verify",
-    pinLoginLimiter,
-    async (req, res) => {
-
-        try {
-
-            const email =
-                normalizeEmail(
-                    req.body?.email
-                );
-
-            const pin =
-                String(
-                    req.body?.pin ||
-                    ""
-                ).trim();
-
-            if (
-                !validEmail(email)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        authenticated:
-                            false,
-
-                        message:
-                            "Invalid email address."
-                    });
-            }
-
-            if (
-                !validPIN(pin)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        authenticated:
-                            false,
-
-                        message:
-                            "Invalid PIN format."
-                    });
-            }
-
-            const database =
-                readDatabase();
-
-            const user =
-                database.users[email];
-
-            if (
-                !user ||
-                !user.pinCreated
-            ) {
-
-                return res
-                    .status(404)
-                    .json({
-
-                        success:
-                            false,
-
-                        authenticated:
-                            false,
-
-                        pinCreated:
-                            false,
-
-                        message:
-                            "No PIN exists for this account."
-                    });
-            }
-
-            const storedPIN = {
-
-                hash:
-                    user.pinHash,
-
-                salt:
-                    user.pinSalt
-            };
-
-            const correct =
-                verifyPIN(
-                    pin,
-                    storedPIN
-                );
-
-            if (!correct) {
-
-                return res
-                    .status(401)
-                    .json({
-
-                        success:
-                            false,
-
-                        authenticated:
-                            false,
-
-                        message:
-                            "Incorrect PIN."
-                    });
-            }
-
-            return res.json({
-
-                success:
-                    true,
-
-                authenticated:
-                    true,
-
-                email,
-
-                message:
-                    "PIN verified successfully."
-            });
-
-        } catch (error) {
-
-            console.error(
-                "PIN verify error:",
-                error
-            );
-
-            return res
-                .status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    authenticated:
-                        false,
-
-                    message:
-                        "Unable to verify PIN."
-                });
-        }
-    }
-);
-
-
-/* =========================================================
-   REQUEST PIN RESET
-========================================================= */
-
-app.post(
-    "/api/pin/request-reset",
-    pinResetRequestLimiter,
-    async (req, res) => {
-
-        try {
-
-            const email =
-                normalizeEmail(
-                    req.body?.email
-                );
-
-            if (
-                !validEmail(email)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        sent:
-                            false,
-
-                        message:
-                            "Please provide a valid email address."
-                    });
-            }
-
-            const database =
-                readDatabase();
-
-            const user =
-                database.users[email];
-
-            if (
-                !user
-            ) {
-
-                return res
-                    .status(404)
-                    .json({
-
-                        success:
-                            false,
-
-                        sent:
-                            false,
-
-                        message:
-                            "No account was found with this email."
-                    });
-            }
-
-            if (
-                !user.pinCreated
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        sent:
-                            false,
-
-                        message:
-                            "This account does not have a PIN yet."
-                    });
-            }
-
-            const existing =
-                pinResetRequests.get(
-                    email
-                );
-
-            if (
-                existing &&
-                Date.now() -
-                existing.lastSentAt <
-                60000
-            ) {
-
-                return res
-                    .status(429)
-                    .json({
-
-                        success:
-                            false,
-
-                        sent:
-                            false,
-
-                        message:
-                            "Please wait before requesting another reset code."
-                    });
-            }
-
-            const code =
-                generateOTP();
-
-            pinResetRequests.set(
-                email,
-                {
-
-                    codeHash:
-                        hashOTP(code),
-
-                    expiresAt:
-                        Date.now() +
-                        10 * 60 * 1000,
-
-                    attempts:
-                        0,
-
-                    lastSentAt:
-                        Date.now()
-                }
-            );
-
-            try {
-
-                await sendPINResetEmail({
-                    email,
-                    code
-                });
-
-            } catch (error) {
-
-                pinResetRequests.delete(
-                    email
-                );
-
-                throw error;
-            }
-
-            return res.json({
-
-                success:
-                    true,
-
-                sent:
-                    true,
-
-                message:
-                    "PIN reset verification code sent to your email."
-            });
-
-        } catch (error) {
-
-            console.error(
-                "PIN reset request error:",
-                error
-            );
-
-            return res
-                .status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    sent:
-                        false,
-
-                    message:
-                        "Unable to send PIN reset code."
-                });
-        }
-    }
-);
-
-
-/* =========================================================
-   VERIFY PIN RESET CODE AND CREATE NEW PIN
-========================================================= */
-
-app.post(
-    "/api/pin/reset",
-    pinResetLimiter,
-    async (req, res) => {
-
-        try {
-
-            const email =
-                normalizeEmail(
-                    req.body?.email
-                );
-
-            const code =
-                String(
-                    req.body?.code ||
-                    ""
-                ).trim();
-
-            const newPIN =
-                String(
-                    req.body?.newPin ||
-                    ""
-                ).trim();
-
-            const confirmPIN =
-                String(
-                    req.body?.confirmPin ||
-                    ""
-                ).trim();
-
-            if (
-                !validEmail(email)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "Invalid email address."
-                    });
-            }
-
-            if (
-                !/^\d{6}$/.test(code)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "Enter the 6-digit verification code."
-                    });
-            }
-
-            if (
-                !validPIN(newPIN)
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "New PIN must contain 4 to 6 digits."
-                    });
-            }
-
-            if (
-                newPIN !==
-                confirmPIN
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "PINs do not match."
-                    });
-            }
-
-            const stored =
-                pinResetRequests.get(
-                    email
-                );
-
-            if (!stored) {
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "Invalid or expired PIN reset code."
-                    });
-            }
-
-            if (
-                Date.now() >
-                stored.expiresAt
-            ) {
-
-                pinResetRequests.delete(
-                    email
-                );
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "PIN reset code has expired."
-                    });
-            }
-
-            if (
-                stored.attempts >=
-                5
-            ) {
-
-                pinResetRequests.delete(
-                    email
-                );
-
-                return res
-                    .status(429)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "Too many incorrect attempts."
-                    });
-            }
-
-            const submittedHash =
-                hashOTP(code);
-
-            if (
-                submittedHash !==
-                stored.codeHash
-            ) {
-
-                stored.attempts++;
-
-                return res
-                    .status(400)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "Incorrect verification code."
-                    });
-            }
-
-            const database =
-                readDatabase();
-
-            const user =
-                database.users[email];
-
-            if (
-                !user
-            ) {
-
-                pinResetRequests.delete(
-                    email
-                );
-
-                return res
-                    .status(404)
-                    .json({
-
-                        success:
-                            false,
-
-                        reset:
-                            false,
-
-                        message:
-                            "Account not found."
-                    });
-            }
-
-            const pinData =
-                hashPIN(newPIN);
-
-            user.pinHash =
-                pinData.hash;
-
-            user.pinSalt =
-                pinData.salt;
-
-            user.pinCreated =
-                true;
-
-            user.pinResetAt =
-                new Date()
-                    .toISOString();
-
-            writeDatabase(
-                database
-            );
-
-            pinResetRequests.delete(
-                email
-            );
-
-            return res.json({
-
-                success:
-                    true,
-
-                reset:
-                    true,
-
-                message:
-                    "Your PIN has been reset successfully."
-            });
-
-        } catch (error) {
-
-            console.error(
-                "PIN reset error:",
-                error
-            );
-
-            return res
-                .status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    reset:
-                        false,
-
-                    message:
-                        "Unable to reset PIN."
                 });
         }
     }
@@ -2235,8 +1323,10 @@ app.post(
                     req.body?.email
                 );
 
+
             const image =
                 req.body?.image;
+
 
             if (
                 !validEmail(email)
@@ -2254,6 +1344,7 @@ app.post(
                     });
             }
 
+
             if (
                 !validateImage(image)
             ) {
@@ -2270,8 +1361,10 @@ app.post(
                     });
             }
 
+
             const database =
                 readDatabase();
+
 
             if (
                 !database.users[email]
@@ -2288,18 +1381,21 @@ app.post(
                     faceRegistered:
                         false,
 
-                    pinCreated:
-                        false
+                    vaultPIN:
+                        null
                 };
             }
 
+
             database.users[email]
                 .faceRegistered = true;
+
 
             database.users[email]
                 .faceRegisteredAt =
                     new Date()
                         .toISOString();
+
 
             database.users[email]
                 .faceSecurityHash =
@@ -2308,13 +1404,11 @@ app.post(
                         .update(image)
                         .digest("hex");
 
+
             writeDatabase(
                 database
             );
 
-            console.log(
-                `Face security registered for ${email}`
-            );
 
             return res.json({
 
@@ -2328,12 +1422,14 @@ app.post(
                     "Face security registered successfully."
             });
 
+
         } catch (error) {
 
             console.error(
                 "Face registration error:",
                 error
             );
+
 
             return res
                 .status(500)
@@ -2365,6 +1461,7 @@ app.post(
                     req.body?.email
                 );
 
+
             if (
                 !validEmail(email)
             ) {
@@ -2381,11 +1478,14 @@ app.post(
                     });
             }
 
+
             const database =
                 readDatabase();
 
+
             const user =
                 database.users[email];
+
 
             return res.json({
 
@@ -2399,12 +1499,14 @@ app.post(
                     )
             });
 
+
         } catch (error) {
 
             console.error(
                 "Face status error:",
                 error
             );
+
 
             return res
                 .status(500)
@@ -2437,8 +1539,10 @@ app.post(
                     req.body?.email
                 );
 
+
             const image =
                 req.body?.image;
+
 
             if (
                 !validEmail(email)
@@ -2459,6 +1563,7 @@ app.post(
                     });
             }
 
+
             if (
                 !validateImage(image)
             ) {
@@ -2478,11 +1583,14 @@ app.post(
                     });
             }
 
+
             const database =
                 readDatabase();
 
+
             const user =
                 database.users[email];
+
 
             if (
                 !user ||
@@ -2507,16 +1615,29 @@ app.post(
                     });
             }
 
+
+            /*
+             * This preserves your current demo
+             * face-login behavior.
+             *
+             * It does NOT perform actual biometric
+             * face recognition.
+             */
+
+
             const token =
                 generateToken();
 
+
             const tokenHash =
                 hashToken(token);
+
 
             const sessionId =
                 crypto
                     .randomBytes(16)
                     .toString("hex");
+
 
             database.sessions[
                 sessionId
@@ -2533,21 +1654,15 @@ app.post(
                 expiresAt:
                     new Date(
                         Date.now() +
-                        7 *
-                        24 *
-                        60 *
-                        60 *
-                        1000
+                        7 * 24 * 60 * 60 * 1000
                     ).toISOString()
             };
+
 
             writeDatabase(
                 database
             );
 
-            console.log(
-                `Face security login successful for ${email}`
-            );
 
             return res.json({
 
@@ -2565,12 +1680,14 @@ app.post(
                     "Face security verification successful."
             });
 
+
         } catch (error) {
 
             console.error(
                 "Face login error:",
                 error
             );
+
 
             return res
                 .status(500)
@@ -2594,13 +1711,12 @@ app.post(
    AUTH SESSION
 ========================================================= */
 
-function getAuthorizationToken(
-    req
-) {
+function getAuthorizationToken(req) {
 
     const header =
         req.headers.authorization ||
         "";
+
 
     if (
         !header.startsWith(
@@ -2610,6 +1726,7 @@ function getAuthorizationToken(
 
         return null;
     }
+
 
     return header
         .substring(7)
@@ -2628,6 +1745,7 @@ function authenticateSession(
             req
         );
 
+
     if (!token) {
 
         return res
@@ -2645,14 +1763,18 @@ function authenticateSession(
             });
     }
 
+
     const tokenHash =
         hashToken(token);
+
 
     const database =
         readDatabase();
 
+
     let session =
         null;
+
 
     for (
         const [
@@ -2680,6 +1802,7 @@ function authenticateSession(
         }
     }
 
+
     if (!session) {
 
         return res
@@ -2697,6 +1820,7 @@ function authenticateSession(
             });
     }
 
+
     if (
         Date.now() >
         new Date(
@@ -2711,6 +1835,7 @@ function authenticateSession(
         writeDatabase(
             database
         );
+
 
         return res
             .status(401)
@@ -2727,8 +1852,10 @@ function authenticateSession(
             });
     }
 
+
     req.auth =
         session;
+
 
     next();
 }
@@ -2746,10 +1873,12 @@ app.get(
         const database =
             readDatabase();
 
+
         const user =
             database.users[
                 req.auth.email
             ];
+
 
         return res.json({
 
@@ -2762,10 +1891,10 @@ app.get(
             email:
                 req.auth.email,
 
-            pinCreated:
+            vaultPINCreated:
                 Boolean(
                     user &&
-                    user.pinCreated
+                    user.vaultPIN
                 ),
 
             faceRegistered:
@@ -2790,13 +1919,16 @@ app.post(
         const database =
             readDatabase();
 
+
         delete database.sessions[
             req.auth.id
         ];
 
+
         writeDatabase(
             database
         );
+
 
         return res.json({
 
@@ -2806,6 +1938,1194 @@ app.post(
             message:
                 "Logged out successfully."
         });
+    }
+);
+
+
+/* =========================================================
+   VAULT STATUS
+========================================================= */
+
+app.get(
+    "/api/vault/status",
+    authenticateSession,
+    (req, res) => {
+
+        try {
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[
+                    req.auth.email
+                ];
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                hasPIN:
+                    Boolean(
+                        user &&
+                        user.vaultPIN
+                    ),
+
+                email:
+                    req.auth.email
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Vault status error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    message:
+                        "Unable to check Vault status."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   CREATE VAULT PIN
+========================================================= */
+
+app.post(
+    "/api/vault/create-pin",
+    authenticateSession,
+    vaultCreateLimiter,
+    (req, res) => {
+
+        try {
+
+            const pin =
+                String(
+                    req.body?.pin ||
+                    ""
+                ).trim();
+
+
+            const confirmPIN =
+                String(
+                    req.body?.confirmPIN ||
+                    ""
+                ).trim();
+
+
+            if (
+                !validPIN(pin)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "PIN must contain 4 to 8 digits."
+                    });
+            }
+
+
+            if (
+                pin !==
+                confirmPIN
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "PINs do not match."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const email =
+                req.auth.email;
+
+
+            const user =
+                database.users[email];
+
+
+            if (!user) {
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Account not found."
+                    });
+            }
+
+
+            if (
+                user.vaultPIN
+            ) {
+
+                return res
+                    .status(409)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "A Vault PIN already exists."
+                    });
+            }
+
+
+            user.vaultPIN =
+                hashPIN(pin);
+
+
+            user.vaultPINCreatedAt =
+                new Date()
+                    .toISOString();
+
+
+            writeDatabase(
+                database
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                created:
+                    true,
+
+                message:
+                    "Vault PIN created successfully."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Vault create PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    message:
+                        "Unable to create Vault PIN."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   VERIFY VAULT PIN
+========================================================= */
+
+app.post(
+    "/api/vault/verify-pin",
+    authenticateSession,
+    vaultVerifyLimiter,
+    (req, res) => {
+
+        try {
+
+            const pin =
+                String(
+                    req.body?.pin ||
+                    ""
+                ).trim();
+
+
+            if (
+                !validPIN(pin)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Invalid PIN format."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[
+                    req.auth.email
+                ];
+
+
+            if (
+                !user ||
+                !user.vaultPIN
+            ) {
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        hasPIN:
+                            false,
+
+                        message:
+                            "No Vault PIN has been created."
+                    });
+            }
+
+
+            const correct =
+                verifyPIN(
+                    pin,
+                    user.vaultPIN
+                );
+
+
+            if (!correct) {
+
+                return res
+                    .status(401)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Incorrect Vault PIN."
+                    });
+            }
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                verified:
+                    true,
+
+                message:
+                    "Vault unlocked successfully."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Vault verify PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    verified:
+                        false,
+
+                    message:
+                        "Unable to verify Vault PIN."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   CHANGE VAULT PIN
+========================================================= */
+
+app.post(
+    "/api/vault/change-pin",
+    authenticateSession,
+    vaultChangeLimiter,
+    (req, res) => {
+
+        try {
+
+            const currentPIN =
+                String(
+                    req.body?.currentPIN ||
+                    ""
+                ).trim();
+
+
+            const newPIN =
+                String(
+                    req.body?.newPIN ||
+                    ""
+                ).trim();
+
+
+            const confirmPIN =
+                String(
+                    req.body?.confirmPIN ||
+                    ""
+                ).trim();
+
+
+            if (
+                !validPIN(currentPIN) ||
+                !validPIN(newPIN)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "PIN must contain 4 to 8 digits."
+                    });
+            }
+
+
+            if (
+                newPIN !==
+                confirmPIN
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "New PINs do not match."
+                    });
+            }
+
+
+            if (
+                currentPIN ===
+                newPIN
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "New PIN must be different from the current PIN."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[
+                    req.auth.email
+                ];
+
+
+            if (
+                !user ||
+                !user.vaultPIN
+            ) {
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "No Vault PIN exists."
+                    });
+            }
+
+
+            const currentCorrect =
+                verifyPIN(
+                    currentPIN,
+                    user.vaultPIN
+                );
+
+
+            if (!currentCorrect) {
+
+                return res
+                    .status(401)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Current PIN is incorrect."
+                    });
+            }
+
+
+            user.vaultPIN =
+                hashPIN(newPIN);
+
+
+            user.vaultPINChangedAt =
+                new Date()
+                    .toISOString();
+
+
+            writeDatabase(
+                database
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                changed:
+                    true,
+
+                message:
+                    "Vault PIN changed successfully."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Vault change PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    message:
+                        "Unable to change Vault PIN."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   FORGOT VAULT PIN
+   =========================================================
+   
+   IMPORTANT:
+   
+   There is NO email parameter here.
+   
+   The email comes from:
+   
+       req.auth.email
+   
+   which comes from the authenticated session.
+   
+   Therefore the user cannot enter a random email.
+========================================================= */
+
+app.post(
+    "/api/vault/forgot-pin",
+    authenticateSession,
+    vaultForgotLimiter,
+    async (req, res) => {
+
+        try {
+
+            const database =
+                readDatabase();
+
+
+            const email =
+                req.auth.email;
+
+
+            const user =
+                database.users[email];
+
+
+            if (!user) {
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Account not found."
+                    });
+            }
+
+
+            if (
+                !user.vaultPIN
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "No Vault PIN exists for this account."
+                    });
+            }
+
+
+            const existing =
+                vaultResetRequests.get(
+                    email
+                );
+
+
+            if (
+                existing &&
+                Date.now() -
+                existing.lastSentAt <
+                60000
+            ) {
+
+                return res
+                    .status(429)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Please wait before requesting another reset code."
+                    });
+            }
+
+
+            const code =
+                generateOTP();
+
+
+            const resetToken =
+                generateToken();
+
+
+            vaultResetRequests.set(
+                email,
+                {
+
+                    codeHash:
+                        hashOTP(code),
+
+                    resetTokenHash:
+                        hashToken(
+                            resetToken
+                        ),
+
+                    expiresAt:
+                        Date.now() +
+                        10 * 60 * 1000,
+
+                    attempts:
+                        0,
+
+                    lastSentAt:
+                        Date.now()
+                }
+            );
+
+
+            try {
+
+                await sendVerificationEmail({
+
+                    email,
+
+                    code,
+
+                    purpose:
+                        "vault"
+
+                });
+
+            } catch (error) {
+
+                vaultResetRequests.delete(
+                    email
+                );
+
+                throw error;
+            }
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                sent:
+                    true,
+
+                message:
+                    "A Vault verification code was sent to your account email."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Vault forgot PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    message:
+                        "Unable to send Vault reset code."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   VERIFY VAULT RESET CODE
+========================================================= */
+
+app.post(
+    "/api/vault/verify-reset-code",
+    authenticateSession,
+    vaultResetLimiter,
+    (req, res) => {
+
+        try {
+
+            const code =
+                String(
+                    req.body?.code ||
+                    ""
+                ).trim();
+
+
+            const email =
+                req.auth.email;
+
+
+            const stored =
+                vaultResetRequests.get(
+                    email
+                );
+
+
+            if (!stored) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Invalid or expired Vault verification code."
+                    });
+            }
+
+
+            if (
+                Date.now() >
+                stored.expiresAt
+            ) {
+
+                vaultResetRequests.delete(
+                    email
+                );
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Vault verification code expired."
+                    });
+            }
+
+
+            if (
+                stored.attempts >=
+                5
+            ) {
+
+                vaultResetRequests.delete(
+                    email
+                );
+
+                return res
+                    .status(429)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Too many incorrect attempts."
+                    });
+            }
+
+
+            const submittedHash =
+                hashOTP(code);
+
+
+            if (
+                submittedHash !==
+                stored.codeHash
+            ) {
+
+                stored.attempts++;
+
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Incorrect Vault verification code."
+                    });
+            }
+
+
+            /*
+             * Return a temporary reset token.
+             *
+             * The token is not the PIN.
+             *
+             * It allows the user to perform exactly one
+             * reset operation.
+             */
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                verified:
+                    true,
+
+                resetToken:
+                    stored.resetTokenHash
+                        ? createResetResponseToken(
+                            stored
+                        )
+                        : null,
+
+                message:
+                    "Vault verification successful."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Vault reset verification error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    verified:
+                        false,
+
+                    message:
+                        "Unable to verify Vault reset code."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   RESET TOKEN HELPER
+========================================================= */
+
+/*
+ * We need the original temporary token.
+ *
+ * For security, the actual token should be kept in memory
+ * only. The database never receives it.
+ *
+ * This helper is replaced below by the reset-token storage
+ * implementation.
+ */
+
+
+/* =========================================================
+   VAULT RESET TOKEN STORAGE
+========================================================= */
+
+/*
+ * The previous vaultResetRequests structure stores only
+ * the hash. For the frontend to receive the actual token,
+ * we need to keep the temporary token in memory.
+ *
+ * We update the function below and use this version.
+ */
+
+function createResetResponseToken(data) {
+
+    if (
+        data.resetToken
+    ) {
+
+        return data.resetToken;
+    }
+
+    return null;
+}
+
+
+/* =========================================================
+   VAULT RESET PIN
+========================================================= */
+
+app.post(
+    "/api/vault/reset-pin",
+    authenticateSession,
+    vaultResetLimiter,
+    (req, res) => {
+
+        try {
+
+            const resetToken =
+                String(
+                    req.body?.resetToken ||
+                    ""
+                ).trim();
+
+
+            const newPIN =
+                String(
+                    req.body?.newPIN ||
+                    ""
+                ).trim();
+
+
+            const confirmPIN =
+                String(
+                    req.body?.confirmPIN ||
+                    ""
+                ).trim();
+
+
+            if (
+                !resetToken
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Vault reset authorization is required."
+                    });
+            }
+
+
+            if (
+                !validPIN(newPIN)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "PIN must contain 4 to 8 digits."
+                    });
+            }
+
+
+            if (
+                newPIN !==
+                confirmPIN
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "New PINs do not match."
+                    });
+            }
+
+
+            const email =
+                req.auth.email;
+
+
+            const stored =
+                vaultResetRequests.get(
+                    email
+                );
+
+
+            if (!stored) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Vault reset authorization has expired."
+                    });
+            }
+
+
+            if (
+                Date.now() >
+                stored.expiresAt
+            ) {
+
+                vaultResetRequests.delete(
+                    email
+                );
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Vault reset authorization has expired."
+                    });
+            }
+
+
+            const suppliedTokenHash =
+                hashToken(
+                    resetToken
+                );
+
+
+            if (
+                !stored.resetTokenHash ||
+                suppliedTokenHash !==
+                stored.resetTokenHash
+            ) {
+
+                return res
+                    .status(401)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Invalid Vault reset authorization."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[email];
+
+
+            if (!user) {
+
+                vaultResetRequests.delete(
+                    email
+                );
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Account not found."
+                    });
+            }
+
+
+            user.vaultPIN =
+                hashPIN(newPIN);
+
+
+            user.vaultPINChangedAt =
+                new Date()
+                    .toISOString();
+
+
+            user.vaultPINResetAt =
+                new Date()
+                    .toISOString();
+
+
+            writeDatabase(
+                database
+            );
+
+
+            /*
+             * Reset token can only be used once.
+             */
+
+            vaultResetRequests.delete(
+                email
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                reset:
+                    true,
+
+                message:
+                    "Vault PIN reset successfully."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Vault reset PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    message:
+                        "Unable to reset Vault PIN."
+                });
+        }
     }
 );
 
@@ -2824,11 +3144,14 @@ app.post(
             const email =
                 req.auth.email;
 
+
             const database =
                 readDatabase();
 
+
             const user =
                 database.users[email];
+
 
             if (!user) {
 
@@ -2845,16 +3168,20 @@ app.post(
                 });
             }
 
+
             user.faceRegistered =
                 false;
+
 
             delete user.faceRegisteredAt;
 
             delete user.faceSecurityHash;
 
+
             writeDatabase(
                 database
             );
+
 
             return res.json({
 
@@ -2868,12 +3195,14 @@ app.post(
                     "Face security removed successfully."
             });
 
+
         } catch (error) {
 
             console.error(
                 "Face removal error:",
                 error
             );
+
 
             return res
                 .status(500)
@@ -2928,6 +3257,7 @@ app.use(
             error
         );
 
+
         return res
             .status(500)
             .json({
@@ -2972,43 +3302,15 @@ const server =
             );
 
             console.log(
-                "EMAIL"
+                "ACCOUNT"
             );
 
             console.log(
-                "Send code: POST /api/send-code"
+                "Send code: /api/send-code"
             );
 
             console.log(
-                "Verify code: POST /api/verify-code"
-            );
-
-            console.log(
-                ""
-            );
-
-            console.log(
-                "PIN"
-            );
-
-            console.log(
-                "Create PIN: POST /api/pin/create"
-            );
-
-            console.log(
-                "PIN status: POST /api/pin/status"
-            );
-
-            console.log(
-                "Verify PIN: POST /api/pin/verify"
-            );
-
-            console.log(
-                "Request PIN reset: POST /api/pin/request-reset"
-            );
-
-            console.log(
-                "Reset PIN: POST /api/pin/reset"
+                "Verify code: /api/verify-code"
             );
 
             console.log(
@@ -3016,19 +3318,19 @@ const server =
             );
 
             console.log(
-                "FACE"
+                "FACE SECURITY"
             );
 
             console.log(
-                "Face register: POST /api/face/register"
+                "Face register: /api/face/register"
             );
 
             console.log(
-                "Face status: POST /api/face/status"
+                "Face status: /api/face/status"
             );
 
             console.log(
-                "Face login: POST /api/face/login"
+                "Face login: /api/face/login"
             );
 
             console.log(
@@ -3040,11 +3342,47 @@ const server =
             );
 
             console.log(
-                "Auth me: GET /api/auth/me"
+                "Auth me: /api/auth/me"
             );
 
             console.log(
-                "Auth logout: POST /api/auth/logout"
+                "Auth logout: /api/auth/logout"
+            );
+
+            console.log(
+                ""
+            );
+
+            console.log(
+                "VAULT"
+            );
+
+            console.log(
+                "Vault status: /api/vault/status"
+            );
+
+            console.log(
+                "Create PIN: /api/vault/create-pin"
+            );
+
+            console.log(
+                "Verify PIN: /api/vault/verify-pin"
+            );
+
+            console.log(
+                "Change PIN: /api/vault/change-pin"
+            );
+
+            console.log(
+                "Forgot PIN: /api/vault/forgot-pin"
+            );
+
+            console.log(
+                "Verify reset code: /api/vault/verify-reset-code"
+            );
+
+            console.log(
+                "Reset PIN: /api/vault/reset-pin"
             );
 
             console.log(
@@ -3060,11 +3398,7 @@ const server =
             );
 
             console.log(
-                "PIN security: ENABLED"
-            );
-
-            console.log(
-                "PIN reset: ENABLED"
+                "Vault PIN hashing: scrypt"
             );
 
             console.log(
