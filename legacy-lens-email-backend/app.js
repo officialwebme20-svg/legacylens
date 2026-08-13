@@ -56,13 +56,11 @@ app.disable("x-powered-by");
 
 app.set("trust proxy", 1);
 
-
 app.use(
     helmet({
         crossOriginResourcePolicy: false
     })
 );
-
 
 app.use(
     cors({
@@ -84,13 +82,11 @@ app.use(
     })
 );
 
-
 app.use(
     express.json({
         limit: "15mb"
     })
 );
-
 
 app.use(
     express.urlencoded({
@@ -98,7 +94,6 @@ app.use(
         limit: "15mb"
     })
 );
-
 
 app.use(
     (req, res, next) => {
@@ -278,7 +273,7 @@ function hashToken(token) {
     return crypto
         .createHash("sha256")
         .update(
-            token
+            String(token)
         )
         .digest("hex");
 }
@@ -294,7 +289,6 @@ function validateImage(image) {
         return false;
     }
 
-
     if (
         !image.startsWith(
             "data:image/"
@@ -304,7 +298,6 @@ function validateImage(image) {
         return false;
     }
 
-
     if (
         image.length >
         12 * 1024 * 1024
@@ -312,7 +305,6 @@ function validateImage(image) {
 
         return false;
     }
-
 
     return true;
 }
@@ -322,15 +314,6 @@ function validateImage(image) {
    PIN HELPERS
 ========================================================= */
 
-/*
- * Vault PIN rules:
- *
- * - Exactly 4 to 8 digits
- * - Numbers only
- *
- * Change this if you want a different PIN length.
- */
-
 function validPIN(pin) {
 
     return /^\d{4,8}$/
@@ -339,13 +322,6 @@ function validPIN(pin) {
         );
 }
 
-
-/*
- * PINs are never stored as plain text.
- *
- * crypto.scryptSync creates a strong password-derived
- * hash using a random salt.
- */
 
 function hashPIN(pin) {
 
@@ -386,20 +362,17 @@ function verifyPIN(pin, storedPIN) {
             return false;
         }
 
-
         const salt =
             Buffer.from(
                 storedPIN.salt,
                 "hex"
             );
 
-
         const expected =
             Buffer.from(
                 storedPIN.hash,
                 "hex"
             );
-
 
         const actual =
             crypto.scryptSync(
@@ -408,7 +381,6 @@ function verifyPIN(pin, storedPIN) {
                 expected.length
             );
 
-
         if (
             actual.length !==
             expected.length
@@ -416,7 +388,6 @@ function verifyPIN(pin, storedPIN) {
 
             return false;
         }
-
 
         return crypto.timingSafeEqual(
             actual,
@@ -432,6 +403,56 @@ function verifyPIN(pin, storedPIN) {
 
         return false;
     }
+}
+
+
+/* =========================================================
+   SESSION CREATION
+========================================================= */
+
+function createAuthenticatedSession(
+    database,
+    email
+) {
+
+    const token =
+        generateToken();
+
+    const tokenHash =
+        hashToken(token);
+
+    const sessionId =
+        crypto
+            .randomBytes(16)
+            .toString("hex");
+
+    const now =
+        Date.now();
+
+    database.sessions[
+        sessionId
+    ] = {
+
+        email,
+
+        tokenHash,
+
+        createdAt:
+            new Date(
+                now
+            ).toISOString(),
+
+        expiresAt:
+            new Date(
+                now +
+                7 * 24 * 60 * 60 * 1000
+            ).toISOString()
+    };
+
+    return {
+        sessionId,
+        token
+    };
 }
 
 
@@ -659,7 +680,7 @@ const vaultResetLimiter =
    OTP CLEANUP
 ========================================================= */
 
-function cleanupExpiredOTPs() {
+function cleanupExpiredRequests() {
 
     const now =
         Date.now();
@@ -709,7 +730,7 @@ function cleanupExpiredOTPs() {
 
 
 setInterval(
-    cleanupExpiredOTPs,
+    cleanupExpiredRequests,
     60 * 1000
 );
 
@@ -1253,7 +1274,45 @@ app.post(
                     database.users[email]
                         .vaultPIN = null;
                 }
+
+                if (
+                    typeof database.users[email]
+                        .faceRegistered ===
+                    "undefined"
+                ) {
+
+                    database.users[email]
+                        .faceRegistered = false;
+                }
             }
+
+
+            database.users[email]
+                .emailVerified = true;
+
+
+            database.users[email]
+                .emailVerifiedAt =
+                    new Date()
+                        .toISOString();
+
+
+            /*
+             * IMPORTANT:
+             *
+             * Create an authenticated session immediately
+             * after successful email verification.
+             *
+             * This allows vault.html to use:
+             *
+             * Authorization: Bearer TOKEN
+             */
+
+            const session =
+                createAuthenticatedSession(
+                    database,
+                    email
+                );
 
 
             writeDatabase(
@@ -1274,7 +1333,13 @@ app.post(
                 verified:
                     true,
 
+                authenticated:
+                    true,
+
                 email,
+
+                token:
+                    session.token,
 
                 message:
                     "Email verified successfully."
@@ -1297,6 +1362,9 @@ app.post(
                         false,
 
                     verified:
+                        false,
+
+                    authenticated:
                         false,
 
                     message:
@@ -1377,6 +1445,9 @@ app.post(
                     createdAt:
                         new Date()
                             .toISOString(),
+
+                    emailVerified:
+                        false,
 
                     faceRegistered:
                         false,
@@ -1617,46 +1688,20 @@ app.post(
 
 
             /*
-             * This preserves your current demo
-             * face-login behavior.
+             * IMPORTANT:
+             *
+             * This remains your existing DEMO face-login
+             * behavior.
              *
              * It does NOT perform actual biometric
              * face recognition.
              */
 
-
-            const token =
-                generateToken();
-
-
-            const tokenHash =
-                hashToken(token);
-
-
-            const sessionId =
-                crypto
-                    .randomBytes(16)
-                    .toString("hex");
-
-
-            database.sessions[
-                sessionId
-            ] = {
-
-                email,
-
-                tokenHash,
-
-                createdAt:
-                    new Date()
-                        .toISOString(),
-
-                expiresAt:
-                    new Date(
-                        Date.now() +
-                        7 * 24 * 60 * 60 * 1000
-                    ).toISOString()
-            };
+            const session =
+                createAuthenticatedSession(
+                    database,
+                    email
+                );
 
 
             writeDatabase(
@@ -1674,7 +1719,8 @@ app.post(
 
                 email,
 
-                token,
+                token:
+                    session.token,
 
                 message:
                     "Face security verification successful."
@@ -1890,6 +1936,12 @@ app.get(
 
             email:
                 req.auth.email,
+
+            emailVerified:
+                Boolean(
+                    user &&
+                    user.emailVerified
+                ),
 
             vaultPINCreated:
                 Boolean(
@@ -2479,19 +2531,6 @@ app.post(
 
 /* =========================================================
    FORGOT VAULT PIN
-   =========================================================
-   
-   IMPORTANT:
-   
-   There is NO email parameter here.
-   
-   The email comes from:
-   
-       req.auth.email
-   
-   which comes from the authenticated session.
-   
-   Therefore the user cannot enter a random email.
 ========================================================= */
 
 app.post(
@@ -2591,6 +2630,8 @@ app.post(
                         hashToken(
                             resetToken
                         ),
+
+                    resetToken,
 
                     expiresAt:
                         Date.now() +
@@ -2771,7 +2812,6 @@ app.post(
 
                 stored.attempts++;
 
-
                 return res
                     .status(400)
                     .json({
@@ -2789,14 +2829,12 @@ app.post(
 
 
             /*
-             * Return a temporary reset token.
+             * The reset token is now returned only after
+             * successful verification.
              *
-             * The token is not the PIN.
-             *
-             * It allows the user to perform exactly one
-             * reset operation.
+             * The token itself exists only in server memory.
+             * The stored hash is used during reset.
              */
-
 
             return res.json({
 
@@ -2807,11 +2845,7 @@ app.post(
                     true,
 
                 resetToken:
-                    stored.resetTokenHash
-                        ? createResetResponseToken(
-                            stored
-                        )
-                        : null,
+                    stored.resetToken,
 
                 message:
                     "Vault verification successful."
@@ -2844,47 +2878,7 @@ app.post(
 
 
 /* =========================================================
-   RESET TOKEN HELPER
-========================================================= */
-
-/*
- * We need the original temporary token.
- *
- * For security, the actual token should be kept in memory
- * only. The database never receives it.
- *
- * This helper is replaced below by the reset-token storage
- * implementation.
- */
-
-
-/* =========================================================
-   VAULT RESET TOKEN STORAGE
-========================================================= */
-
-/*
- * The previous vaultResetRequests structure stores only
- * the hash. For the frontend to receive the actual token,
- * we need to keep the temporary token in memory.
- *
- * We update the function below and use this version.
- */
-
-function createResetResponseToken(data) {
-
-    if (
-        data.resetToken
-    ) {
-
-        return data.resetToken;
-    }
-
-    return null;
-}
-
-
-/* =========================================================
-   VAULT RESET PIN
+   RESET VAULT PIN
 ========================================================= */
 
 app.post(
@@ -3087,7 +3081,7 @@ app.post(
 
 
             /*
-             * Reset token can only be used once.
+             * One-time reset token.
              */
 
             vaultResetRequests.delete(
