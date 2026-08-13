@@ -114,7 +114,7 @@ app.use(
 
 
 /* =========================================================
-   DATABASE FILES
+   DATABASE
 ========================================================= */
 
 const dataDirectory =
@@ -215,10 +215,18 @@ function writeDatabase(
 
 
 /* =========================================================
-   MEMORY
+   OTP MEMORY
 ========================================================= */
 
 const otpRequests =
+    new Map();
+
+
+/* =========================================================
+   PIN RESET TOKENS
+========================================================= */
+
+const pinResetTokens =
     new Map();
 
 
@@ -292,6 +300,67 @@ function hashToken(
 }
 
 
+/* =========================================================
+   PIN HELPERS
+========================================================= */
+
+function validPIN(
+    pin
+) {
+
+    return /^\d{4,6}$/
+        .test(
+            String(pin)
+        );
+}
+
+
+function hashPIN(
+    pin
+) {
+
+    return crypto
+        .createHash("sha256")
+        .update(
+            String(pin)
+        )
+        .digest("hex");
+}
+
+
+function verifyPIN(
+    pin,
+    storedHash
+) {
+
+    const submittedHash =
+        hashPIN(pin);
+
+    return crypto.timingSafeEqual(
+        Buffer.from(
+            submittedHash,
+            "hex"
+        ),
+        Buffer.from(
+            storedHash,
+            "hex"
+        )
+    );
+}
+
+
+function generatePINResetToken() {
+
+    return crypto
+        .randomBytes(48)
+        .toString("hex");
+}
+
+
+/* =========================================================
+   IMAGE VALIDATION
+========================================================= */
+
 function validateImage(
     image
 ) {
@@ -337,7 +406,9 @@ app.get(
     (req, res) => {
 
         res.json({
-            success: true,
+
+            success:
+                true,
 
             service:
                 "Legacy Lens AI",
@@ -355,7 +426,8 @@ app.get(
 
         res.json({
 
-            success: true,
+            success:
+                true,
 
             service:
                 "Legacy Lens AI",
@@ -380,6 +452,9 @@ app.get(
                 "enabled",
 
             persistentDatabase:
+                "enabled",
+
+            pinSecurity:
                 "enabled"
         });
     }
@@ -458,6 +533,57 @@ const faceLoginLimiter =
     });
 
 
+const pinCreateLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            10,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
+const pinVerifyLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            10,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
+const pinResetLimiter =
+    rateLimit({
+
+        windowMs:
+            15 * 60 * 1000,
+
+        max:
+            10,
+
+        standardHeaders:
+            true,
+
+        legacyHeaders:
+            false
+    });
+
+
 /* =========================================================
    OTP CLEANUP
 ========================================================= */
@@ -490,14 +616,48 @@ function cleanupExpiredOTPs() {
 }
 
 
+function cleanupExpiredPINResetTokens() {
+
+    const now =
+        Date.now();
+
+
+    for (
+        const [
+            token,
+            data
+        ]
+        of pinResetTokens.entries()
+    ) {
+
+        if (
+            !data ||
+            data.expiresAt <=
+            now
+        ) {
+
+            pinResetTokens.delete(
+                token
+            );
+        }
+    }
+}
+
+
 setInterval(
     cleanupExpiredOTPs,
     60 * 1000
 );
 
 
+setInterval(
+    cleanupExpiredPINResetTokens,
+    60 * 1000
+);
+
+
 /* =========================================================
-   SEND EMAIL
+   SEND VERIFICATION EMAIL
 ========================================================= */
 
 async function sendVerificationEmail({
@@ -1007,6 +1167,1143 @@ app.post(
 
 
 /* =========================================================
+   CREATE PIN
+========================================================= */
+
+app.post(
+    "/api/pin/create",
+    pinCreateLimiter,
+    authenticateSession,
+    async (req, res) => {
+
+        try {
+
+            const email =
+                req.auth.email;
+
+
+            const pin =
+                String(
+                    req.body?.pin ||
+                    ""
+                ).trim();
+
+
+            if (
+                !validPIN(pin)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        pinCreated:
+                            false,
+
+                        message:
+                            "PIN must contain 4 to 6 digits."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[email];
+
+
+            if (!user) {
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        pinCreated:
+                            false,
+
+                        message:
+                            "User account not found."
+                    });
+            }
+
+
+            user.pinHash =
+                hashPIN(pin);
+
+
+            user.pinCreatedAt =
+                new Date()
+                    .toISOString();
+
+
+            user.pinUpdatedAt =
+                new Date()
+                    .toISOString();
+
+
+            writeDatabase(
+                database
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                pinCreated:
+                    true,
+
+                message:
+                    "PIN created successfully."
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "Create PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    pinCreated:
+                        false,
+
+                    message:
+                        "Unable to create PIN."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   PIN STATUS
+========================================================= */
+
+app.get(
+    "/api/pin/status",
+    authenticateSession,
+    async (req, res) => {
+
+        try {
+
+            const email =
+                req.auth.email;
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[email];
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                pinCreated:
+                    Boolean(
+                        user &&
+                        user.pinHash
+                    )
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "PIN status error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    message:
+                        "Unable to check PIN status."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   VERIFY PIN
+========================================================= */
+
+app.post(
+    "/api/pin/verify",
+    pinVerifyLimiter,
+    async (req, res) => {
+
+        try {
+
+            const email =
+                normalizeEmail(
+                    req.body?.email
+                );
+
+
+            const pin =
+                String(
+                    req.body?.pin ||
+                    ""
+                ).trim();
+
+
+            if (
+                !validEmail(email)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        authenticated:
+                            false,
+
+                        message:
+                            "Invalid email address."
+                    });
+            }
+
+
+            if (
+                !validPIN(pin)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        authenticated:
+                            false,
+
+                        message:
+                            "Invalid PIN."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[email];
+
+
+            if (
+                !user ||
+                !user.pinHash
+            ) {
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        authenticated:
+                            false,
+
+                        message:
+                            "No PIN has been created for this account."
+                    });
+            }
+
+
+            const correct =
+                verifyPIN(
+                    pin,
+                    user.pinHash
+                );
+
+
+            if (!correct) {
+
+                return res
+                    .status(401)
+                    .json({
+
+                        success:
+                            false,
+
+                        authenticated:
+                            false,
+
+                        message:
+                            "Incorrect PIN."
+                    });
+            }
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                authenticated:
+                    true,
+
+                email,
+
+                message:
+                    "PIN verified successfully."
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "PIN verification error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    authenticated:
+                        false,
+
+                    message:
+                        "Unable to verify PIN."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   FORGOT PIN - START RESET
+========================================================= */
+
+app.post(
+    "/api/pin/forgot",
+    sendCodeLimiter,
+    async (req, res) => {
+
+        try {
+
+            const email =
+                normalizeEmail(
+                    req.body?.email
+                );
+
+
+            if (
+                !validEmail(email)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Please provide a valid email address."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[email];
+
+
+            if (
+                !user
+            ) {
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "No account was found with this email address."
+                    });
+            }
+
+
+            if (
+                !user.pinHash
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "This account does not have a PIN yet."
+                    });
+            }
+
+
+            const existing =
+                otpRequests.get(
+                    email
+                );
+
+
+            if (
+                existing &&
+                Date.now() -
+                existing.lastSentAt <
+                60000
+            ) {
+
+                return res
+                    .status(429)
+                    .json({
+
+                        success:
+                            false,
+
+                        message:
+                            "Please wait before requesting another code."
+                    });
+            }
+
+
+            const code =
+                generateOTP();
+
+
+            otpRequests.set(
+                email,
+                {
+
+                    codeHash:
+                        hashOTP(code),
+
+                    expiresAt:
+                        Date.now() +
+                        10 * 60 * 1000,
+
+                    attempts:
+                        0,
+
+                    lastSentAt:
+                        Date.now(),
+
+                    purpose:
+                        "pin-reset"
+                }
+            );
+
+
+            try {
+
+                await sendVerificationEmail({
+                    email,
+                    code
+                });
+
+            } catch (error) {
+
+                otpRequests.delete(
+                    email
+                );
+
+                throw error;
+            }
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                sent:
+                    true,
+
+                message:
+                    "PIN reset verification code sent successfully."
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "Forgot PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    message:
+                        error.message ||
+                        "Unable to send PIN reset code."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   VERIFY PIN RESET CODE
+========================================================= */
+
+app.post(
+    "/api/pin/verify-reset-code",
+    verifyCodeLimiter,
+    async (req, res) => {
+
+        try {
+
+            const email =
+                normalizeEmail(
+                    req.body?.email
+                );
+
+
+            const code =
+                String(
+                    req.body?.code ||
+                    ""
+                ).trim();
+
+
+            const stored =
+                otpRequests.get(
+                    email
+                );
+
+
+            if (
+                !stored ||
+                stored.purpose !==
+                "pin-reset"
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Invalid or expired PIN reset code."
+                    });
+            }
+
+
+            if (
+                Date.now() >
+                stored.expiresAt
+            ) {
+
+                otpRequests.delete(
+                    email
+                );
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "PIN reset code expired."
+                    });
+            }
+
+
+            if (
+                stored.attempts >=
+                5
+            ) {
+
+                otpRequests.delete(
+                    email
+                );
+
+                return res
+                    .status(429)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Too many incorrect attempts."
+                    });
+            }
+
+
+            const submittedHash =
+                hashOTP(code);
+
+
+            if (
+                submittedHash !==
+                stored.codeHash
+            ) {
+
+                stored.attempts++;
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        verified:
+                            false,
+
+                        message:
+                            "Incorrect verification code."
+                    });
+            }
+
+
+            const resetToken =
+                generatePINResetToken();
+
+
+            pinResetTokens.set(
+                resetToken,
+                {
+
+                    email,
+
+                    expiresAt:
+                        Date.now() +
+                        10 * 60 * 1000
+                }
+            );
+
+
+            otpRequests.delete(
+                email
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                verified:
+                    true,
+
+                resetToken,
+
+                message:
+                    "Verification successful. You can now create a new PIN."
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "PIN reset verification error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    verified:
+                        false,
+
+                    message:
+                        "Unable to verify PIN reset code."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   RESET PIN
+========================================================= */
+
+app.post(
+    "/api/pin/reset",
+    pinResetLimiter,
+    async (req, res) => {
+
+        try {
+
+            const resetToken =
+                String(
+                    req.body?.resetToken ||
+                    ""
+                ).trim();
+
+
+            const newPin =
+                String(
+                    req.body?.newPin ||
+                    ""
+                ).trim();
+
+
+            if (!resetToken) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        reset:
+                            false,
+
+                        message:
+                            "PIN reset authorization is required."
+                    });
+            }
+
+
+            if (
+                !validPIN(newPin)
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success:
+                            false,
+
+                        reset:
+                            false,
+
+                        message:
+                            "PIN must contain 4 to 6 digits."
+                    });
+            }
+
+
+            const resetData =
+                pinResetTokens.get(
+                    resetToken
+                );
+
+
+            if (!resetData) {
+
+                return res
+                    .status(401)
+                    .json({
+
+                        success:
+                            false,
+
+                        reset:
+                            false,
+
+                        message:
+                            "Invalid or expired PIN reset authorization."
+                    });
+            }
+
+
+            if (
+                Date.now() >
+                resetData.expiresAt
+            ) {
+
+                pinResetTokens.delete(
+                    resetToken
+                );
+
+                return res
+                    .status(401)
+                    .json({
+
+                        success:
+                            false,
+
+                        reset:
+                            false,
+
+                        message:
+                            "PIN reset authorization expired."
+                    });
+            }
+
+
+            const database =
+                readDatabase();
+
+
+            const user =
+                database.users[
+                    resetData.email
+                ];
+
+
+            if (!user) {
+
+                pinResetTokens.delete(
+                    resetToken
+                );
+
+                return res
+                    .status(404)
+                    .json({
+
+                        success:
+                            false,
+
+                        reset:
+                            false,
+
+                        message:
+                            "User account not found."
+                    });
+            }
+
+
+            user.pinHash =
+                hashPIN(newPin);
+
+
+            user.pinUpdatedAt =
+                new Date()
+                    .toISOString();
+
+
+            writeDatabase(
+                database
+            );
+
+
+            pinResetTokens.delete(
+                resetToken
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                reset:
+                    true,
+
+                message:
+                    "PIN reset successfully."
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "Reset PIN error:",
+                error
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    reset:
+                        false,
+
+                    message:
+                        "Unable to reset PIN."
+                });
+        }
+    }
+);
+
+
+/* =========================================================
+   AUTH SESSION
+========================================================= */
+
+function getAuthorizationToken(
+    req
+) {
+
+    const header =
+        req.headers.authorization ||
+        "";
+
+
+    if (
+        !header.startsWith(
+            "Bearer "
+        )
+    ) {
+
+        return null;
+    }
+
+
+    return header
+        .substring(7)
+        .trim();
+}
+
+
+function authenticateSession(
+    req,
+    res,
+    next
+) {
+
+    const token =
+        getAuthorizationToken(
+            req
+        );
+
+
+    if (!token) {
+
+        return res
+            .status(401)
+            .json({
+
+                success:
+                    false,
+
+                authenticated:
+                    false,
+
+                message:
+                    "Authentication required."
+            });
+    }
+
+
+    const tokenHash =
+        hashToken(token);
+
+
+    const database =
+        readDatabase();
+
+
+    let session =
+        null;
+
+
+    for (
+        const [
+            id,
+            current
+        ]
+        of Object.entries(
+            database.sessions
+        )
+    ) {
+
+        if (
+            current.tokenHash ===
+            tokenHash
+        ) {
+
+            session = {
+
+                id,
+
+                ...current
+            };
+
+            break;
+        }
+    }
+
+
+    if (!session) {
+
+        return res
+            .status(401)
+            .json({
+
+                success:
+                    false,
+
+                authenticated:
+                    false,
+
+                message:
+                    "Invalid authentication session."
+            });
+    }
+
+
+    if (
+        Date.now() >
+        new Date(
+            session.expiresAt
+        ).getTime()
+    ) {
+
+        delete database.sessions[
+            session.id
+        ];
+
+        writeDatabase(
+            database
+        );
+
+
+        return res
+            .status(401)
+            .json({
+
+                success:
+                    false,
+
+                authenticated:
+                    false,
+
+                message:
+                    "Your session has expired."
+            });
+    }
+
+
+    req.auth =
+        session;
+
+
+    next();
+}
+
+
+/* =========================================================
+   CURRENT USER
+========================================================= */
+
+app.get(
+    "/api/auth/me",
+    authenticateSession,
+    (req, res) => {
+
+        return res.json({
+
+            success:
+                true,
+
+            authenticated:
+                true,
+
+            email:
+                req.auth.email
+        });
+    }
+);
+
+
+/* =========================================================
+   LOGOUT
+========================================================= */
+
+app.post(
+    "/api/auth/logout",
+    authenticateSession,
+    (req, res) => {
+
+        const database =
+            readDatabase();
+
+
+        delete database.sessions[
+            req.auth.id
+        ];
+
+
+        writeDatabase(
+            database
+        );
+
+
+        return res.json({
+
+            success:
+                true,
+
+            message:
+                "Logged out successfully."
+        });
+    }
+);
+
+
+/* =========================================================
    FACE REGISTER
 ========================================================= */
 
@@ -1092,13 +2389,6 @@ app.post(
                     new Date()
                         .toISOString();
 
-
-            /*
-             * For the demo we store a fingerprint
-             * of the registration image rather
-             * than pretending it is a biometric
-             * face descriptor.
-             */
 
             database.users[email]
                 .faceSecurityHash =
@@ -1324,17 +2614,6 @@ app.post(
             }
 
 
-            /*
-             * DEMO AUTHENTICATION
-             *
-             * The camera capture proves that the
-             * security camera workflow is active.
-             *
-             * This does NOT claim to perform actual
-             * biometric face matching.
-             */
-
-
             const token =
                 generateToken();
 
@@ -1418,221 +2697,6 @@ app.post(
                         "Unable to complete face login."
                 });
         }
-    }
-);
-
-
-/* =========================================================
-   AUTH SESSION
-========================================================= */
-
-function getAuthorizationToken(
-    req
-) {
-
-    const header =
-        req.headers.authorization ||
-        "";
-
-
-    if (
-        !header.startsWith(
-            "Bearer "
-        )
-    ) {
-
-        return null;
-    }
-
-
-    return header
-        .substring(7)
-        .trim();
-}
-
-
-function authenticateSession(
-    req,
-    res,
-    next
-) {
-
-    const token =
-        getAuthorizationToken(
-            req
-        );
-
-
-    if (!token) {
-
-        return res
-            .status(401)
-            .json({
-
-                success:
-                    false,
-
-                authenticated:
-                    false,
-
-                message:
-                    "Authentication required."
-            });
-    }
-
-
-    const tokenHash =
-        hashToken(token);
-
-
-    const database =
-        readDatabase();
-
-
-    let session =
-        null;
-
-
-    for (
-        const [
-            id,
-            current
-        ]
-        of Object.entries(
-            database.sessions
-        )
-    ) {
-
-        if (
-            current.tokenHash ===
-            tokenHash
-        ) {
-
-            session = {
-
-                id,
-
-                ...current
-            };
-
-            break;
-        }
-    }
-
-
-    if (!session) {
-
-        return res
-            .status(401)
-            .json({
-
-                success:
-                    false,
-
-                authenticated:
-                    false,
-
-                message:
-                    "Invalid authentication session."
-            });
-    }
-
-
-    if (
-        Date.now() >
-        new Date(
-            session.expiresAt
-        ).getTime()
-    ) {
-
-        delete database.sessions[
-            session.id
-        ];
-
-        writeDatabase(
-            database
-        );
-
-
-        return res
-            .status(401)
-            .json({
-
-                success:
-                    false,
-
-                authenticated:
-                    false,
-
-                message:
-                    "Your session has expired."
-            });
-    }
-
-
-    req.auth =
-        session;
-
-
-    next();
-}
-
-
-/* =========================================================
-   CURRENT USER
-========================================================= */
-
-app.get(
-    "/api/auth/me",
-    authenticateSession,
-    (req, res) => {
-
-        return res.json({
-
-            success:
-                true,
-
-            authenticated:
-                true,
-
-            email:
-                req.auth.email
-        });
-    }
-);
-
-
-/* =========================================================
-   LOGOUT
-========================================================= */
-
-app.post(
-    "/api/auth/logout",
-    authenticateSession,
-    (req, res) => {
-
-        const database =
-            readDatabase();
-
-
-        delete database.sessions[
-            req.auth.id
-        ];
-
-
-        writeDatabase(
-            database
-        );
-
-
-        return res.json({
-
-            success:
-                true,
-
-            message:
-                "Logged out successfully."
-        });
     }
 );
 
@@ -1805,6 +2869,38 @@ const server =
             );
 
             console.log(
+                "Email verification: /api/send-code"
+            );
+
+            console.log(
+                "Email verification: /api/verify-code"
+            );
+
+            console.log(
+                "PIN create: /api/pin/create"
+            );
+
+            console.log(
+                "PIN status: /api/pin/status"
+            );
+
+            console.log(
+                "PIN verify: /api/pin/verify"
+            );
+
+            console.log(
+                "PIN forgot: /api/pin/forgot"
+            );
+
+            console.log(
+                "PIN verify reset code: /api/pin/verify-reset-code"
+            );
+
+            console.log(
+                "PIN reset: /api/pin/reset"
+            );
+
+            console.log(
                 "Face register: /api/face/register"
             );
 
@@ -1826,6 +2922,10 @@ const server =
 
             console.log(
                 "Persistent database: ENABLED"
+            );
+
+            console.log(
+                "PIN security: ENABLED"
             );
 
             console.log(
